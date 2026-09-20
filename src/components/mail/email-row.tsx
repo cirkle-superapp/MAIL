@@ -47,7 +47,7 @@ export function EmailRow({
       className={cn(
         "group relative flex cursor-pointer items-start gap-2 px-3 py-2.5 transition-colors sm:px-4",
         active
-          ? "bg-rose-500/10"
+          ? "bg-primary/10"
           : selected
           ? "bg-muted/60"
           : "hover:bg-muted/40",
@@ -60,7 +60,7 @@ export function EmailRow({
           onCheckedChange={onSelect}
           onClick={(e) => e.stopPropagation()}
           aria-label={`Select email from ${email.fromName}`}
-          className="border-muted-foreground/50 data-[state=checked]:border-rose-500 data-[state=checked]:bg-rose-500 data-[state=checked]:text-white"
+          className="border-muted-foreground/50 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
         />
         <StarButton
           emailId={email.id}
@@ -99,7 +99,7 @@ export function EmailRow({
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">
           {email.isImportant && (
-            <span className="inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-rose-500" aria-label="Important" />
+            <span className="inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" aria-label="Important" />
           )}
           <span
             className={cn(

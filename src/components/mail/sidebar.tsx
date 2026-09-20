@@ -121,7 +121,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
             <TooltipTrigger asChild>
               <Button
                 onClick={() => openCompose()}
-                className="h-12 w-full justify-start gap-3 rounded-xl bg-rose-500 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-rose-600 hover:shadow-md"
+                className="h-12 w-full justify-start gap-3 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-soft transition hover:bg-primary/90 hover:shadow-glow"
               >
                 <Pencil className="h-4 w-4" />
                 <span>Compose</span>
@@ -150,14 +150,14 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                 className={cn(
                   "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-colors",
                   active
-                    ? "bg-rose-500/10 font-semibold text-rose-700 dark:text-rose-300"
+                    ? "bg-primary/10 font-semibold text-primary"
                     : "text-foreground/80 hover:bg-muted"
                 )}
               >
                 <Icon
                   className={cn(
                     "h-[1.05rem] w-[1.05rem]",
-                    active ? "text-rose-500" : "text-muted-foreground"
+                    active ? "text-primary" : "text-muted-foreground"
                   )}
                 />
                 <span className="flex-1 truncate text-left">{item.label}</span>
@@ -165,7 +165,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   <Badge
                     variant="secondary"
                     className={cn(
-                      "h-5 min-w-[1.25rem] justify-center bg-rose-500/15 px-1.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300"
+                      "h-5 min-w-[1.25rem] justify-center bg-primary/15 px-1.5 text-[11px] font-semibold text-primary"
                     )}
                   >
                     {count}
@@ -204,7 +204,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                     className={cn(
                       "flex items-center gap-3 rounded-l-lg rounded-r-full px-3 py-1.5 text-sm transition-colors",
                       active
-                        ? "bg-rose-500/10 font-semibold text-rose-700 dark:text-rose-300"
+                        ? "bg-primary/10 font-semibold text-primary"
                         : "text-foreground/80 hover:bg-muted"
                     )}
                   >
@@ -272,7 +272,7 @@ function CreateLabelDialog({
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <TagIcon className="h-4 w-4 text-rose-500" /> Create new label
+            <TagIcon className="h-4 w-4 text-accent" /> Create new label
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
@@ -314,7 +314,7 @@ function CreateLabelDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" className="bg-rose-500 text-white hover:bg-rose-600">
+            <Button type="submit" className="bg-primary text-primary-foreground hover:bg-primary/90">
               Create
             </Button>
           </DialogFooter>

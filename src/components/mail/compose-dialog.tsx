@@ -279,7 +279,7 @@ export function ComposeDialog({
 
           {attachmentName && (
             <div className="mx-3 mb-2 inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs">
-              <Paperclip className="h-3.5 w-3.5 text-rose-500" />
+              <Paperclip className="h-3.5 w-3.5 text-accent" />
               <span className="font-medium">{attachmentName}</span>
               <button
                 onClick={() => setAttachmentName("")}
@@ -296,7 +296,7 @@ export function ComposeDialog({
             <Button
               onClick={handleSend}
               disabled={sending}
-              className="h-8 rounded-full bg-rose-500 px-5 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-60"
+              className="h-8 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
             >
               {sending ? "Sending…" : "Send"}
               <Send className="ml-1.5 h-3.5 w-3.5" />
@@ -318,7 +318,7 @@ export function ComposeDialog({
             <Button
               variant="ghost"
               size="icon"
-              className="ml-auto h-8 w-8 text-muted-foreground hover:text-rose-600"
+              className="ml-auto h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={handleSaveDraft}
               aria-label="Discard draft"
               title="Discard"

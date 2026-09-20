@@ -226,7 +226,7 @@ export function EmailDetail({
       <div className="border-t border-border bg-background p-3 sm:px-8">
         <Button
           variant="outline"
-          className="h-10 rounded-full border-rose-500/30 px-5 text-rose-600 hover:bg-rose-500/5 hover:text-rose-700"
+          className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
           onClick={() => setReplyOpen(true)}
         >
           <Reply className="mr-2 h-4 w-4" /> Reply
@@ -263,7 +263,7 @@ function ActionBtn({
             className={cn(
               "h-9 w-9",
               danger
-                ? "text-muted-foreground hover:text-rose-600"
+                ? "text-muted-foreground hover:text-destructive"
                 : "text-muted-foreground hover:text-foreground"
             )}
             onClick={onClick}
@@ -364,14 +364,14 @@ function MessageView({
       </div>
 
       <div
-        className="prose prose-sm max-w-none px-4 pb-4 text-sm leading-relaxed text-foreground/90 sm:px-5 [&_a]:text-rose-600 [&_a:hover]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_table]:border-collapse [&_td]:border [&_td]:border-border/50 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border/50 [&_th]:px-2 [&_th]:py-1"
+        className="prose prose-sm max-w-none px-4 pb-4 text-sm leading-relaxed text-foreground/90 sm:px-5 [&_a]:text-accent [&_a:hover]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_table]:border-collapse [&_td]:border [&_td]:border-border/50 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border/50 [&_th]:px-2 [&_th]:py-1"
         dangerouslySetInnerHTML={{ __html: email.body }}
       />
 
       {email.hasAttachment && email.attachmentName && (
         <div className="mx-4 mb-4 sm:mx-5">
           <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs">
-            <Paperclip className="h-4 w-4 text-rose-500" />
+            <Paperclip className="h-4 w-4 text-accent" />
             <span className="font-medium text-foreground">
               {email.attachmentName}
             </span>
@@ -385,7 +385,7 @@ function MessageView({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-full border-rose-500/30 px-4 text-rose-600 hover:bg-rose-500/5 hover:text-rose-700"
+            className="h-8 rounded-full border-primary/30 px-4 text-primary hover:bg-primary/5 hover:text-primary"
             onClick={onReply}
           >
             <Reply className="mr-2 h-3.5 w-3.5" /> Reply
@@ -409,7 +409,7 @@ function EmptyDetail() {
     <div className="hidden h-full items-center justify-center bg-muted/20 p-10 text-center md:flex">
       <div className="max-w-sm space-y-3">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border">
-          <svg viewBox="0 0 24 24" className="h-8 w-8 text-rose-500" fill="currentColor" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-8 w-8 text-accent" fill="currentColor" aria-hidden="true">
             <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
           </svg>
         </div>

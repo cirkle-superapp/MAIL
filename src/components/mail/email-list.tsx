@@ -191,7 +191,7 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
             Could not load emails.{" "}
             <button
               onClick={() => refetch()}
-              className="ml-1 text-rose-500 underline"
+              className="ml-1 text-primary underline"
             >
               Retry
             </button>
@@ -282,7 +282,7 @@ function BulkToolbar({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-rose-600"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={onDelete}
             >
               <Trash2 className="h-4 w-4" />

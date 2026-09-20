@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       : textToHtml(bodyText);
 
   const threadId = makeThreadId();
-  const me = "you@zmail.com";
+  const me = "you@cirkle.mail";
 
   const created = await db.email.create({
     data: {

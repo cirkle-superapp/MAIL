@@ -15,6 +15,7 @@ import { useMailStore } from "@/store/mail-store";
 import { useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { CirkleLogo } from "@/components/brand/cirkle-logo";
 
 interface TopBarProps {
   onToggleSidebar: () => void;
@@ -62,14 +63,13 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
       </Button>
 
       <div className="flex items-center gap-2 pr-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500 text-white shadow-sm">
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-            <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
-          </svg>
-        </div>
-        <span className="hidden text-lg font-semibold tracking-tight text-foreground sm:inline">
-          Zmail
-        </span>
+        <CirkleLogo
+          size={32}
+          withWordmark
+          wordmarkText="Cirkle Mail"
+          subText="your connected inbox"
+          wordmarkClassName="text-foreground"
+        />
       </div>
 
       <div className="relative flex flex-1 items-center">
@@ -113,7 +113,7 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
         </Button>
         <ThemeToggle />
         <Avatar className="ml-1 h-8 w-8 border border-border">
-          <AvatarFallback className="bg-gradient-to-br from-rose-500 to-orange-500 text-xs font-semibold text-white">
+          <AvatarFallback className="bg-gradient-to-br from-teal to-gold text-xs font-semibold text-cream">
             Y
           </AvatarFallback>
         </Avatar>

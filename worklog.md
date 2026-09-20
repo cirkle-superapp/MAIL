@@ -55,3 +55,35 @@ Stage Summary:
 - A complete Gmail-like mail platform ("Zmail") is live at `/` on port 3000.
 - Stack: Next.js 16 + Prisma/SQLite + shadcn/ui + TanStack Query + Zustand + next-themes.
 - All core mail flows working: read, compose, reply, star, archive, delete, search, folders, labels, bulk actions, dark mode, responsive.
+
+---
+Task ID: C1-C6
+Agent: main (Z.ai Code)
+Task: Rebrand to "Cirkle Mail" + integrate CIRKLE-SUPERAPP design system & animated logo
+
+Work Log:
+- Fetched CIRKLE-SUPERAPP repo (GitHub API, token used transiently only) to extract brand assets: `src/components/brand/cirkle-logo.tsx`, `src/app/globals.css`, `tailwind.config.ts`.
+- Replaced `src/app/globals.css` with the canonical Cirkle design system: gold (39 45% 57%) + deep teal (195 56% 23%) + rose (351 41% 56%) + cream/charcoal palette, Fraunces display font, aurora gradient background, glass morphism utilities, custom scrollbar, `cirkle-rotate` 30s linear keyframe animation, `gradient-text-gold` wordmark class, `prefers-reduced-motion` support.
+- Created `src/components/brand/cirkle-logo.tsx` with the EXACT animated logo from the repo: three overlapping rings (top + bottom-left + bottom-right) around a filled center dot, stroked with a single shared `cirkle-brand-grad` linear gradient (sand-gold → rose → deep-teal, `gradientUnits=userSpaceOnUse` so the sweep is global and the rotation is visibly obvious). Exports `CirkleLogo` (animated, with optional wordmark), `CirkleMark` (static), `CirkleBrandDefs` (renders the shared `<defs>` once).
+- Rewrote `public/logo.svg` as the Cirkle three-ring mark (static, for favicon).
+- Updated `src/app/layout.tsx`: added Fraunces next/font, renders `<CirkleBrandDefs />` once globally, metadata title "Cirkle Mail — your connected inbox", icon `/logo.svg`.
+- Updated `src/components/mail/top-bar.tsx`: replaced inline mail-icon with `<CirkleLogo withWordmark wordmarkText="Cirkle Mail" subText="your connected inbox" />`; avatar gradient → `from-teal to-gold text-cream`.
+- Migrated all accent colors from Tailwind `rose-500` to Cirkle design tokens across `sidebar.tsx`, `email-list.tsx`, `email-row.tsx`, `email-detail.tsx`, `compose-dialog.tsx`: primary actions (Compose/Send) → `bg-primary text-primary-foreground` (deep teal in light, gold in dark); active folder + unread badges → `bg-primary/10 text-primary`; important dots + attachment icons + label icons → `text-accent` (Cirkle rose); delete/discard hovers → `hover:text-destructive`; reply outline buttons → `border-primary/30 text-primary`; email body links → `[&_a]:text-accent`.
+- Rebranded seed data: "Zmail Team" → "Cirkle Team", `team@zmail.com` → `team@cirkle.mail`, welcome subject/body/snippet → "Cirkle Mail" copy; updated `me` address in both API routes (`/api/emails`, `/api/emails/[id]`) to `you@cirkle.mail`.
+- Re-seeded DB via `POST /api/emails {action:seed}`; verified first inbox email is from "Cirkle Team" with subject "Welcome to Cirkle Mail — your connected inbox".
+- `bun run lint` passes clean (0 errors, 0 warnings).
+
+Verification (agent-browser):
+- Title: "Cirkle Mail — your connected inbox". 0 console/page errors on fresh load.
+- Animated logo: wrapper div has `cirkle-rotate` class; computed `animationName` = `cirkleRotate`; SVG has 4 circles (3 rings + center dot); shared gradient `cirkle-brand-grad` found with 3 stops (gold/rose/teal).
+- Wordmark "Cirkle Mail" renders with `gradient-text-gold`; sub text "your connected inbox".
+- Compose button: rgb(26,75,91) = deep Cirkle teal (light) → rgb(195,160,96) = gold (dark).
+- Body background in dark: rgb(17,17,14) = charcoal; aurora gradient applied.
+- Email detail heading uses Fraunces serif font; reply button uses primary token (teal light / gold dark).
+- Favicon: `/logo.svg` (Cirkle three-ring mark) loads.
+- Seed data confirmed: from "Cirkle Team", subject "Welcome to Cirkle Mail — your connected inbox".
+
+Stage Summary:
+- App fully rebranded to **Cirkle Mail** with the exact animated three-ring logo (gold→rose→teal gradient, 360°/30s rotation) and the full CIRKLE-SUPERAPP premium design system (gold + deep teal + cream/charcoal, Fraunces serif, aurora + glass, theme-aware primary).
+- No secrets were written to any project file; all credentials were used transiently.
+- SECURITY: user-shared GitHub PAT, Vercel token, Neon DB password, Inngest key, and Turso token are now exposed in plaintext and must be rotated.
