@@ -15,6 +15,7 @@ import {
   ChevronDown,
   AlertCircle,
   Clock,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,7 @@ const PRIMARY_NAV: NavItem[] = [
   { key: "IMPORTANT", label: "Important", icon: AlertCircle },
   { key: "SENT", label: "Sent", icon: Send },
   { key: "DRAFTS", label: "Drafts", icon: FileText },
+  { key: "SCHEDULED", label: "Scheduled", icon: CalendarClock },
   { key: "ARCHIVE", label: "All Mail", icon: Archive },
   { key: "SPAM", label: "Spam", icon: ShieldAlert },
   { key: "TRASH", label: "Trash", icon: Trash2 },

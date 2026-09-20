@@ -121,7 +121,12 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
             <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button variant="ghost" size="icon" aria-label="Settings">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Settings"
+          onClick={() => window.dispatchEvent(new Event("cirkle:show-settings"))}
+        >
           <Settings className="h-[1.1rem] w-[1.1rem]" />
         </Button>
         <ThemeToggle />

@@ -2,6 +2,7 @@ export type Folder =
   | "INBOX"
   | "SENT"
   | "DRAFTS"
+  | "SCHEDULED"
   | "TRASH"
   | "SPAM"
   | "ARCHIVE";
@@ -26,6 +27,7 @@ export interface Email {
   hasAttachment: boolean;
   attachmentName: string;
   snoozedUntil: string | null;
+  scheduledFor: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,6 +70,7 @@ export const FOLDER_LABELS: Record<Folder, string> = {
   INBOX: "Inbox",
   SENT: "Sent",
   DRAFTS: "Drafts",
+  SCHEDULED: "Scheduled",
   TRASH: "Trash",
   SPAM: "Spam",
   ARCHIVE: "All Mail",

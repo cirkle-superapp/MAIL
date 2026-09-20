@@ -6,7 +6,7 @@ import { makeSnippet, makeThreadId, textToHtml } from "@/lib/email-utils";
 
 export const dynamic = "force-dynamic";
 
-const FOLDERS: Folder[] = ["INBOX", "SENT", "DRAFTS", "TRASH", "SPAM", "ARCHIVE"];
+const FOLDERS: Folder[] = ["INBOX", "SENT", "DRAFTS", "SCHEDULED", "TRASH", "SPAM", "ARCHIVE"];
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -20,10 +20,12 @@ export async function GET(request: NextRequest) {
   const now = new Date();
 
   const where: {
-    folder?: { in: Folder[] };
+    folder?: { in: Folder[] } | Folder;
     labels?: { contains: string };
     isStarred?: boolean;
     isImportant?: boolean;
+    isRead?: boolean;
+    hasAttachment?: boolean;
     snoozedUntil?: Date | { gt: Date } | null;
     OR?: Array<Record<string, unknown>>;
     AND?: Array<Record<string, unknown>>;
@@ -62,14 +64,74 @@ export async function GET(request: NextRequest) {
     where.AND = [notSnoozed];
   }
 
+  // Parse search query for Gmail-style operators + free text.
+  // Operators: is:unread, is:read, is:starred, is:important, has:attachment,
+  // from:X, to:X, subject:X, label:X, in:inbox|sent|drafts|trash|spam|archive
+  const searchFilters: Array<Record<string, unknown>> = [];
   if (search) {
-    where.OR = [
-      { subject: { contains: search } },
-      { fromName: { contains: search } },
-      { fromEmail: { contains: search } },
-      { toEmails: { contains: search } },
-      { body: { contains: search } },
-      { snippet: { contains: search } },
+    const tokens = search.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+    const freeText: string[] = [];
+    const andClauses: Array<Record<string, unknown>> = [];
+    for (let token of tokens) {
+      token = token.replace(/^"(.*)"$/, "$1");
+      const colon = token.indexOf(":");
+      if (colon > 0) {
+        const key = token.slice(0, colon).toLowerCase();
+        const val = token.slice(colon + 1).toLowerCase();
+        if (key === "is") {
+          if (val === "unread") andClauses.push({ isRead: false });
+          else if (val === "read") andClauses.push({ isRead: true });
+          else if (val === "starred") andClauses.push({ isStarred: true });
+          else if (val === "important") andClauses.push({ isImportant: true });
+        } else if (key === "has" || key === "hasattachment") {
+          if (val === "attachment" || key === "hasattachment")
+            andClauses.push({ hasAttachment: true });
+        } else if (key === "from") {
+          andClauses.push({
+            OR: [
+              { fromEmail: { contains: val } },
+              { fromName: { contains: val } },
+            ],
+          });
+        } else if (key === "to") {
+          andClauses.push({ toEmails: { contains: val } });
+        } else if (key === "subject") {
+          andClauses.push({ subject: { contains: val } });
+        } else if (key === "label") {
+          andClauses.push({ labels: { contains: val } });
+        } else if (key === "in") {
+          const folderVal = val.toUpperCase();
+          if (FOLDERS.includes(folderVal as Folder)) {
+            where.folder = folderVal as Folder;
+          }
+        } else {
+          freeText.push(token);
+        }
+      } else {
+        freeText.push(token);
+      }
+    }
+    if (freeText.length > 0) {
+      const text = freeText.join(" ");
+      andClauses.push({
+        OR: [
+          { subject: { contains: text } },
+          { fromName: { contains: text } },
+          { fromEmail: { contains: text } },
+          { toEmails: { contains: text } },
+          { body: { contains: text } },
+          { snippet: { contains: text } },
+        ],
+      });
+    }
+    if (andClauses.length > 0) {
+      searchFilters.push(...andClauses);
+    }
+  }
+  if (searchFilters.length > 0) {
+    where.AND = [
+      ...(where.AND ?? []),
+      ...searchFilters,
     ];
   }
 
@@ -94,7 +156,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, message: "Seeded database" });
   }
 
-  // Compose / send (or save draft)
+  // Compose / send (or save draft, or schedule)
   const to: string = (body?.to ?? "").trim();
   const cc: string = (body?.cc ?? "").trim();
   const bcc: string = (body?.bcc ?? "").trim();
@@ -102,6 +164,8 @@ export async function POST(request: NextRequest) {
   const bodyText: string = body?.body ?? "";
   const attachmentName: string = (body?.attachmentName ?? "").trim();
   const isDraft: boolean = body?.isDraft === true;
+  const scheduledFor: string | null =
+    typeof body?.scheduledFor === "string" ? body.scheduledFor : null;
 
   // Drafts may legitimately have no recipient; only enforce recipient when actually sending
   if (!isDraft && !to) {
@@ -119,6 +183,12 @@ export async function POST(request: NextRequest) {
   const threadId = makeThreadId();
   const me = "you@cirkle.mail";
 
+  const folder: Folder = isDraft
+    ? "DRAFTS"
+    : scheduledFor
+    ? "SCHEDULED"
+    : "SENT";
+
   const created = await db.email.create({
     data: {
       threadId,
@@ -130,18 +200,33 @@ export async function POST(request: NextRequest) {
       subject: subject || "(no subject)",
       body: htmlBody,
       snippet: makeSnippet(htmlBody),
-      date: new Date(),
+      date: scheduledFor ? new Date(scheduledFor) : new Date(),
       isRead: true,
       isStarred: false,
       isImportant: false,
-      folder: isDraft ? "DRAFTS" : "SENT",
+      folder,
       labels: "",
       hasAttachment: !!attachmentName,
       attachmentName,
+      scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
     },
   });
 
   return NextResponse.json({ email: created });
+}
+
+// Deliver due scheduled emails: any SCHEDULED email whose scheduledFor <= now
+// moves to SENT. Called on app mount (and periodically) to simulate delivery.
+export async function PUT() {
+  const now = new Date();
+  const result = await db.email.updateMany({
+    where: {
+      folder: "SCHEDULED",
+      scheduledFor: { lte: now },
+    },
+    data: { folder: "SENT", scheduledFor: null },
+  });
+  return NextResponse.json({ delivered: result.count });
 }
 
 export async function PATCH(request: NextRequest) {

@@ -9,16 +9,31 @@ import {
   Send,
   Trash2,
   Save,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useMailStore, type ComposeMode } from "@/store/mail-store";
+import { useSettings } from "@/store/settings-store";
 import { useEmailDetail, useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { showUndoToast } from "@/components/mail/undo-toast";
-import { makeSnippet, textToHtml, formatFullDate } from "@/lib/email-utils";
+import {
+  makeSnippet,
+  textToHtml,
+  formatFullDate,
+  formatSnoozeUntil,
+} from "@/lib/email-utils";
 import { RichTextEditor } from "@/components/mail/rich-text-editor";
 import { RecipientInput } from "@/components/mail/recipient-input";
 import type { Email } from "@/lib/types";
@@ -34,6 +49,8 @@ export function ComposeDialog() {
   const composeEmailId = useMailStore((s) => s.composeEmailId);
   const closeCompose = useMailStore((s) => s.closeCompose);
   const invalidate = useInvalidateMail();
+  const sendAndArchive = useSettings((s) => s.sendAndArchive);
+  const signature = useSettings((s) => s.signature);
 
   // Fetch the source email when replying / forwarding
   const { data: sourceData } = useEmailDetail(
@@ -51,6 +68,8 @@ export function ComposeDialog() {
   const [windowState, setWindowState] = useState<WindowState>("normal");
   const [sending, setSending] = useState(false);
   const [editorKey, setEditorKey] = useState(0);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState<string>("");
 
   const pendingSendRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,12 +122,12 @@ export function ComposeDialog() {
         sourceEmail.hasAttachment ? sourceEmail.attachmentName : ""
       );
     } else {
-      // New compose
+      // New compose — append the user's signature (from settings) if set
       setTo("");
       setCc("");
       setBcc("");
       setSubject("");
-      setBodyHtml("");
+      setBodyHtml(signature ? textToHtml("\n\n" + signature) : "");
       setShowCc(false);
       setAttachmentName("");
     }
@@ -171,8 +190,9 @@ export function ComposeDialog() {
             .catch(() => {});
         }
         // Send + archive: when replying, archive the original conversation
-        // (Gmail default) if it's still in the inbox.
+        // (Gmail default) if it's still in the inbox and the setting is on.
         if (
+          sendAndArchive &&
           (mode === "reply" || mode === "reply-all") &&
           sourceEmail &&
           sourceEmail.folder === "INBOX"
@@ -241,6 +261,37 @@ export function ComposeDialog() {
     setWindowState("normal");
     invalidate();
     toast({ title: "Send cancelled", duration: 1500 });
+  }
+
+  async function handleSchedule() {
+    if (!to.trim()) {
+      toast({ title: "Please add a recipient", variant: "destructive" });
+      return;
+    }
+    if (!scheduleDate) {
+      toast({ title: "Pick a date and time", variant: "destructive" });
+      return;
+    }
+    const payload = buildPayload(false);
+    const iso = new Date(scheduleDate).toISOString();
+    try {
+      const res = await fetch("/api/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, scheduledFor: iso }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      invalidate();
+      setScheduleOpen(false);
+      toast({
+        title: "Scheduled",
+        description: `Will send ${formatSnoozeUntil(iso)}`,
+        duration: 2500,
+      });
+      closeCompose();
+    } catch {
+      toast({ title: "Could not schedule", variant: "destructive" });
+    }
   }
 
   async function handleSaveDraft() {
@@ -465,6 +516,25 @@ export function ComposeDialog() {
             </Button>
             <Button
               variant="ghost"
+              size="sm"
+              className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 1);
+                d.setHours(9, 0, 0, 0);
+                const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+                  .toISOString()
+                  .slice(0, 16);
+                setScheduleDate(local);
+                setScheduleOpen(true);
+              }}
+              aria-label="Schedule send"
+              title="Schedule send"
+            >
+              <CalendarClock className="h-3.5 w-3.5" /> Schedule
+            </Button>
+            <Button
+              variant="ghost"
               size="icon"
               className="ml-auto h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={
@@ -488,6 +558,46 @@ export function ComposeDialog() {
           </div>
         </div>
       )}
+
+      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-primary" /> Schedule send
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="schedule-datetime">Send at</Label>
+              <Input
+                id="schedule-datetime"
+                type="datetime-local"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+              />
+            </div>
+            {scheduleDate && (
+              <p className="text-xs text-muted-foreground">
+                Will be sent on{" "}
+                {formatSnoozeUntil(new Date(scheduleDate).toISOString())} and
+                appear in your Sent folder.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setScheduleOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={handleSchedule}
+              disabled={!scheduleDate}
+            >
+              Schedule send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

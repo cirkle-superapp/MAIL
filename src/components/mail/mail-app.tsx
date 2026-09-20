@@ -7,10 +7,12 @@ import { EmailList } from "@/components/mail/email-list";
 import { EmailDetail } from "@/components/mail/email-detail";
 import { ComposeDialog } from "@/components/mail/compose-dialog";
 import { ShortcutsHelpDialog } from "@/components/mail/shortcuts-help";
+import { SettingsDialog } from "@/components/mail/settings-dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useMailStore } from "@/store/mail-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useInvalidateMail } from "@/hooks/use-mail";
 import { cn } from "@/lib/utils";
 
 export function MailApp() {
@@ -19,6 +21,30 @@ export function MailApp() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const selectedEmailId = useMailStore((s) => s.selectedEmailId);
   const setSelectedEmailId = useMailStore((s) => s.setSelectedEmailId);
+  const invalidate = useInvalidateMail();
+
+  // Deliver due scheduled emails on mount + every 30s (no background cron
+  // available, so we simulate delivery when the app is open).
+  useEffect(() => {
+    let mounted = true;
+    async function deliver() {
+      try {
+        const res = await fetch("/api/emails", { method: "PUT" });
+        if (res.ok) {
+          const data = await res.json();
+          if (mounted && data?.delivered > 0) invalidate();
+        }
+      } catch {
+        // ignore
+      }
+    }
+    deliver();
+    const t = setInterval(deliver, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(t);
+    };
+  }, [invalidate]);
 
   // Keyboard shortcuts ("/" dispatches a focus-search event the TopBar listens for)
   useKeyboardShortcuts(() =>
@@ -92,6 +118,7 @@ export function MailApp() {
 
       <ComposeDialog />
       <ShortcutsHelpDialog />
+      <SettingsDialog />
     </div>
   );
 }

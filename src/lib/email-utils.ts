@@ -217,3 +217,46 @@ export function sanitizeEmailHtml(html: string): string {
 
   return doc.body ? doc.body.innerHTML : html;
 }
+
+export type Category = "PRIMARY" | "PROMOTIONS" | "SOCIAL" | "UPDATES";
+
+const PROMO_RE =
+  /(newsletter|digest|weekly|substack|promo|promotion|deals?|offers?|sale|coupon|unsubscribe|mailing)/i;
+const SOCIAL_RE =
+  /(github|goodreads|facebook|twitter|x\.com|linkedin|instagram|tiktok|snapchat|discord|slack|social|notifications?@|@.*\.(com|io))/i;
+const UPDATES_RE =
+  /(invoice|receipt|billing|payment|order|shipping|delivery|tracking|statement|bank|tax|receipt|confirm|verification|security|alert|reminder|no-?reply)/i;
+
+/**
+ * Derive a Gmail-style inbox category for an email using labels + sender +
+ * subject heuristics. Used by the inbox tabs UI (no schema field needed).
+ */
+export function deriveCategory(
+  email:
+    | {
+        labels?: string | null;
+        fromEmail?: string;
+        fromName?: string;
+        subject?: string;
+        snippet?: string;
+      }
+    | undefined
+): Category {
+  if (!email) return "PRIMARY";
+  const labels = (email.labels ?? "").toLowerCase();
+  const from = `${email.fromEmail ?? ""} ${email.fromName ?? ""}`.toLowerCase();
+  const subj = `${email.subject ?? ""} ${email.snippet ?? ""}`.toLowerCase();
+
+  // Label-based first (explicit user assignment wins)
+  if (labels.includes("newsletter")) return "PROMOTIONS";
+  if (labels.includes("social")) return "SOCIAL";
+  if (labels.includes("finance")) return "UPDATES";
+
+  // Sender/subject heuristics
+  if (PROMO_RE.test(from) || PROMO_RE.test(subj)) return "PROMOTIONS";
+  if (SOCIAL_RE.test(from) || SOCIAL_RE.test(subj)) return "SOCIAL";
+  if (UPDATES_RE.test(from) || UPDATES_RE.test(subj)) return "UPDATES";
+
+  return "PRIMARY";
+}
+

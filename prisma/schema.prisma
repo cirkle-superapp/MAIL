@@ -30,6 +30,7 @@ model Email {
   hasAttachment Boolean  @default(false)
   attachmentName String @default("")
   snoozedUntil  DateTime?
+  scheduledFor  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -37,6 +38,7 @@ model Email {
   @@index([threadId])
   @@index([isStarred])
   @@index([snoozedUntil])
+  @@index([scheduledFor])
 }
 
 model Label {

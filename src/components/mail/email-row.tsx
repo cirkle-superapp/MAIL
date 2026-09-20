@@ -1,11 +1,12 @@
 "use client";
 
-import { Paperclip, Clock, Archive, Trash2, MailOpen, Mail } from "lucide-react";
+import { Paperclip, Clock, Archive, Trash2, MailOpen, Mail, CalendarClock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StarButton } from "@/components/mail/star-button";
 import { SnoozeMenu } from "@/components/mail/snooze-menu";
+import { useSettings } from "@/store/settings-store";
 import type { Email } from "@/lib/types";
 import {
   getInitials,
@@ -45,7 +46,10 @@ export function EmailRow({
     ? email.labels.split(",").map((l) => l.trim()).filter(Boolean)
     : [];
   const isSnoozed = !!email.snoozedUntil && new Date(email.snoozedUntil) > new Date();
+  const isScheduled =
+    !!email.scheduledFor && new Date(email.scheduledFor) > new Date();
   const hasHoverActions = !!(onArchive || onDelete || onToggleRead || onSnooze);
+  const density = useSettings((s) => s.density);
 
   return (
     <li
@@ -59,7 +63,8 @@ export function EmailRow({
         }
       }}
       className={cn(
-        "group relative flex cursor-pointer items-start gap-2 px-3 py-2.5 transition-colors sm:px-4",
+        "group relative flex cursor-pointer items-start gap-2 px-3 transition-colors sm:px-4",
+        density === "compact" ? "py-1.5" : "py-2.5",
         active
           ? "bg-primary/10"
           : selected
@@ -106,7 +111,18 @@ export function EmailRow({
           </span>
           <span className="relative ml-auto flex flex-shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
             {/* time — hidden on hover when actions are available */}
-            {isSnoozed ? (
+            {isScheduled ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary",
+                  hasHoverActions && "group-hover:opacity-0"
+                )}
+                title={`Scheduled to send ${formatSnoozeUntil(email.scheduledFor!)}`}
+              >
+                <CalendarClock className="h-2.5 w-2.5" />
+                {formatSnoozeUntil(email.scheduledFor!).split(",")[0]}
+              </span>
+            ) : isSnoozed ? (
               <span
                 className={cn(
                   "inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary",

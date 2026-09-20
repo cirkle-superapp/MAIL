@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Folder } from "@/lib/types";
+import type { Category } from "@/lib/email-utils";
 
 export type SpecialView = "STARRED" | "IMPORTANT" | "SNOOZED";
 export type ComposeMode = "new" | "reply" | "reply-all" | "forward" | "edit-draft";
@@ -9,6 +10,7 @@ export interface MailState {
   selectedLabel: string | null;
   searchQuery: string;
   selectedEmailId: string | null;
+  inboxTab: Category | "ALL";
   // Compose state (unified so any caller — sidebar, detail, shortcuts —
   // can open the compose dialog in any mode)
   composeOpen: boolean;
@@ -21,6 +23,7 @@ export interface MailState {
   setSearchQuery: (q: string) => void;
   setSearchInput: (q: string) => void;
   setSelectedEmailId: (id: string | null) => void;
+  setInboxTab: (t: Category | "ALL") => void;
   openCompose: () => void;
   openReply: (emailId: string) => void;
   openReplyAll: (emailId: string) => void;
@@ -34,6 +37,7 @@ export const useMailStore = create<MailState>((set) => ({
   selectedLabel: null,
   searchQuery: "",
   selectedEmailId: null,
+  inboxTab: "PRIMARY",
   composeOpen: false,
   composeMode: "new",
   composeEmailId: null,
@@ -49,6 +53,7 @@ export const useMailStore = create<MailState>((set) => ({
   setSearchQuery: (q) => set({ searchQuery: q, selectedEmailId: null }),
   setSearchInput: (q) => set({ searchInput: q }),
   setSelectedEmailId: (id) => set({ selectedEmailId: id }),
+  setInboxTab: (t) => set({ inboxTab: t }),
   openCompose: () =>
     set({ composeOpen: true, composeMode: "new", composeEmailId: null }),
   openReply: (emailId) =>

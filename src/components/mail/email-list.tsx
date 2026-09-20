@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   MoreVertical,
   Clock,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -42,10 +43,11 @@ import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { LabelMenu } from "@/components/mail/label-menu";
 import { showUndoToast } from "@/components/mail/undo-toast";
 import { useMailStore } from "@/store/mail-store";
+import { useSettings } from "@/store/settings-store";
 import { useEmailList, useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
 import { type Email, type Folder } from "@/lib/types";
-import { dateBucket } from "@/lib/email-utils";
+import { dateBucket, deriveCategory, type Category } from "@/lib/email-utils";
 
 const FOLDER_META: Record<
   Folder | "STARRED" | "IMPORTANT" | "SNOOZED",
@@ -57,6 +59,7 @@ const FOLDER_META: Record<
   IMPORTANT: { label: "Important", icon: AlertCircle },
   SENT: { label: "Sent", icon: Send },
   DRAFTS: { label: "Drafts", icon: FileText },
+  SCHEDULED: { label: "Scheduled", icon: CalendarClock },
   ARCHIVE: { label: "All Mail", icon: ArchiveIcon },
   SPAM: { label: "Spam", icon: ShieldAlert },
   TRASH: { label: "Trash", icon: Trash2 },
@@ -69,6 +72,9 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
   const selectedEmailId = useMailStore((s) => s.selectedEmailId);
   const setSelectedEmailId = useMailStore((s) => s.setSelectedEmailId);
   const openEditDraft = useMailStore((s) => s.openEditDraft);
+  const inboxTab = useMailStore((s) => s.inboxTab);
+  const setInboxTab = useMailStore((s) => s.setInboxTab);
+  const inboxTabsSetting = useSettings((s) => s.inboxTabs);
   const { data, isLoading, isError, refetch, isFetching } = useEmailList();
   const invalidate = useInvalidateMail();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -93,8 +99,33 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
     }
   }
 
-  const emails: Email[] = useMemo(() => data?.emails ?? [], [data]);
+  const allEmails: Email[] = useMemo(() => data?.emails ?? [], [data]);
   const meta = FOLDER_META[folder];
+
+  // Inbox category tabs: filter the list by the selected tab when enabled
+  const showTabs =
+    folder === "INBOX" &&
+    !searchQuery &&
+    !selectedLabel &&
+    inboxTabsSetting === "categories";
+  const emails: Email[] = useMemo(() => {
+    if (!showTabs || inboxTab === "ALL") return allEmails;
+    return allEmails.filter((e) => deriveCategory(e) === inboxTab);
+  }, [allEmails, showTabs, inboxTab]);
+
+  const tabCounts: Record<Category | "ALL", number> = useMemo(() => {
+    const c: Record<Category | "ALL", number> = {
+      ALL: allEmails.length,
+      PRIMARY: 0,
+      PROMOTIONS: 0,
+      SOCIAL: 0,
+      UPDATES: 0,
+    };
+    for (const e of allEmails) {
+      c[deriveCategory(e)] += 1;
+    }
+    return c;
+  }, [allEmails]);
 
   const allChecked = emails.length > 0 && selected.size === emails.length;
   const someChecked = selected.size > 0 && selected.size < emails.length;
@@ -375,6 +406,46 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
         )}
       </div>
 
+      {/* Inbox category tabs */}
+      {showTabs && (
+        <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background px-2">
+          <InboxTabButton
+            active={inboxTab === "ALL"}
+            label="All"
+            count={tabCounts.ALL}
+            onClick={() => setInboxTab("ALL")}
+          />
+          <InboxTabButton
+            active={inboxTab === "PRIMARY"}
+            label="Primary"
+            count={tabCounts.PRIMARY}
+            dot="bg-primary"
+            onClick={() => setInboxTab("PRIMARY")}
+          />
+          <InboxTabButton
+            active={inboxTab === "PROMOTIONS"}
+            label="Promotions"
+            count={tabCounts.PROMOTIONS}
+            dot="bg-amber-500"
+            onClick={() => setInboxTab("PROMOTIONS")}
+          />
+          <InboxTabButton
+            active={inboxTab === "SOCIAL"}
+            label="Social"
+            count={tabCounts.SOCIAL}
+            dot="bg-purple-500"
+            onClick={() => setInboxTab("SOCIAL")}
+          />
+          <InboxTabButton
+            active={inboxTab === "UPDATES"}
+            label="Updates"
+            count={tabCounts.UPDATES}
+            dot="bg-emerald-500"
+            onClick={() => setInboxTab("UPDATES")}
+          />
+        </div>
+      )}
+
       {/* Email rows */}
       <div className="flex-1 overflow-y-auto">
         {isError ? (
@@ -444,6 +515,39 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
 }
 
 const BUCKET_ORDER = ["Today", "Yesterday", "This week", "This month", "Earlier"] as const;
+
+function InboxTabButton({
+  active,
+  label,
+  count,
+  dot,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  dot?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-shrink-0 items-center gap-2 rounded-t-lg border-b-2 px-3 py-2 text-sm transition-colors",
+        active
+          ? "border-primary font-semibold text-foreground"
+          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+      )}
+    >
+      {dot && <span className={cn("h-2 w-2 rounded-full", dot)} />}
+      <span>{label}</span>
+      {count > 0 && (
+        <span className="text-[11px] text-muted-foreground">{count}</span>
+      )}
+    </button>
+  );
+}
 
 function DateGroupedEmailList({
   emails,
