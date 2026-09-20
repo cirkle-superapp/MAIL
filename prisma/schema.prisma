@@ -31,6 +31,7 @@ model Email {
   attachmentName String @default("")
   snoozedUntil  DateTime?
   scheduledFor  DateTime?
+  intent       String   @default("")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -39,6 +40,27 @@ model Email {
   @@index([isStarred])
   @@index([snoozedUntil])
   @@index([scheduledFor])
+  @@index([intent])
+}
+
+model Commitment {
+  id           String   @id @default(cuid())
+  emailId      String
+  threadId     String
+  owner        String   @default("") // who promised ("you" = the user, or a name/email)
+  action       String
+  dueDate      DateTime?
+  status      String   @default("OPEN") // PROPOSED|OPEN|DUE_SOON|OVERDUE|COMPLETED|CANCELLED
+  confidence   Float    @default(0.5)
+  evidence     String   @default("") // the matched sentence
+  direction    String   @default("outgoing") // outgoing (user promised) | incoming (someone promised the user)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([emailId])
+  @@index([threadId])
+  @@index([status])
+  @@index([owner])
 }
 
 model Label {

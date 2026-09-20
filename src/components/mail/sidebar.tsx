@@ -16,6 +16,13 @@ import {
   AlertCircle,
   Clock,
   CalendarClock,
+  Zap,
+  Reply,
+  Hourglass,
+  Handshake,
+  Users,
+  Receipt,
+  MailOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +73,17 @@ const PRIMARY_NAV: NavItem[] = [
   { key: "ARCHIVE", label: "All Mail", icon: Archive },
   { key: "SPAM", label: "Spam", icon: ShieldAlert },
   { key: "TRASH", label: "Trash", icon: Trash2 },
+];
+
+// Communication OS workspace views (§2) — intent/state-based smart filters
+const WORKSPACE_NAV: NavItem[] = [
+  { key: "NOW", label: "Now", icon: Zap },
+  { key: "REPLY", label: "Reply", icon: Reply },
+  { key: "WAITING", label: "Waiting", icon: Hourglass },
+  { key: "COMMITMENTS", label: "Commitments", icon: Handshake },
+  { key: "PEOPLE", label: "People", icon: Users },
+  { key: "RECEIPTS", label: "Receipts", icon: Receipt },
+  { key: "SUBSCRIPTIONS", label: "Subscriptions", icon: MailOpen },
 ];
 
 export function Sidebar({ collapsed }: { collapsed: boolean }) {
@@ -137,6 +155,52 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
 
       <ScrollArea className="flex-1 px-2 pb-4">
+        {/* Communication OS workspace views (§2) */}
+        <div className="mb-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+            <Zap className="h-3 w-3" />
+            <span>Workspace</span>
+          </div>
+          <nav className="flex flex-col gap-0.5">
+            {WORKSPACE_NAV.map((item) => {
+              const active = isActive(item.key);
+              const count = counts[item.key] ?? 0;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => setFolder(item.key)}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-colors",
+                    active
+                      ? "bg-accent/10 font-semibold text-accent"
+                      : "text-foreground/80 hover:bg-muted"
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-[1.05rem] w-[1.05rem]",
+                      active ? "text-accent" : "text-muted-foreground"
+                    )}
+                  />
+                  <span className="flex-1 truncate text-left">{item.label}</span>
+                  {count ? (
+                    <Badge
+                      variant="secondary"
+                      className="h-5 min-w-[1.25rem] justify-center bg-accent/15 px-1.5 text-[11px] font-semibold text-accent"
+                    >
+                      {count}
+                    </Badge>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="mb-1 mt-3 flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span>Folders</span>
+        </div>
         <nav className="flex flex-col gap-0.5">
           {PRIMARY_NAV.map((item) => {
             const active = isActive(item.key);

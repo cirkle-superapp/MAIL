@@ -17,6 +17,10 @@ import {
   MoreVertical,
   Clock,
   CalendarClock,
+  Zap,
+  Reply,
+  Hourglass,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -42,6 +46,7 @@ import { EmailRow } from "@/components/mail/email-row";
 import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { LabelMenu } from "@/components/mail/label-menu";
 import { showUndoToast } from "@/components/mail/undo-toast";
+import { CommitmentsView, PeopleView } from "@/components/mail/workspace-views";
 import { useMailStore } from "@/store/mail-store";
 import { useSettings } from "@/store/settings-store";
 import { useEmailList, useInvalidateMail } from "@/hooks/use-mail";
@@ -50,13 +55,18 @@ import { type Email, type Folder } from "@/lib/types";
 import { dateBucket, deriveCategory, type Category } from "@/lib/email-utils";
 
 const FOLDER_META: Record<
-  Folder | "STARRED" | "IMPORTANT" | "SNOOZED",
+  Folder | "STARRED" | "IMPORTANT" | "SNOOZED" | "NOW" | "REPLY" | "WAITING" | "RECEIPTS" | "SUBSCRIPTIONS",
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
   INBOX: { label: "Inbox", icon: InboxIcon },
   STARRED: { label: "Starred", icon: Star },
   SNOOZED: { label: "Snoozed", icon: Clock },
   IMPORTANT: { label: "Important", icon: AlertCircle },
+  NOW: { label: "Now", icon: Zap },
+  REPLY: { label: "Needs reply", icon: Reply },
+  WAITING: { label: "Waiting", icon: Hourglass },
+  RECEIPTS: { label: "Receipts", icon: Receipt },
+  SUBSCRIPTIONS: { label: "Subscriptions", icon: MailOpen },
   SENT: { label: "Sent", icon: Send },
   DRAFTS: { label: "Drafts", icon: FileText },
   SCHEDULED: { label: "Scheduled", icon: CalendarClock },
@@ -305,6 +315,14 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
     : selectedLabel
     ? `Label: ${selectedLabel}`
     : meta.label;
+
+  // Communication OS dedicated views (not flat email lists)
+  if (folder === "COMMITMENTS") {
+    return <CommitmentsView />;
+  }
+  if (folder === "PEOPLE") {
+    return <PeopleView />;
+  }
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -734,7 +752,16 @@ function EmptyState({
   folder,
   search,
 }: {
-  folder: Folder | "STARRED" | "IMPORTANT" | "SNOOZED";
+  folder:
+    | Folder
+    | "STARRED"
+    | "IMPORTANT"
+    | "SNOOZED"
+    | "NOW"
+    | "REPLY"
+    | "WAITING"
+    | "RECEIPTS"
+    | "SUBSCRIPTIONS";
   search: boolean;
 }) {
   const meta = FOLDER_META[folder];

@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StarButton } from "@/components/mail/star-button";
 import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { LabelMenu } from "@/components/mail/label-menu";
+import { HandleEmailPanel } from "@/components/mail/handle-email-panel";
 import { showUndoToast } from "@/components/mail/undo-toast";
 import { useMailStore } from "@/store/mail-store";
 import { useEmailDetail, useInvalidateMail } from "@/hooks/use-mail";
@@ -44,6 +45,9 @@ import {
   formatEmailTime,
   formatFullDate,
   sanitizeEmailHtml,
+  INTENT_LABELS,
+  INTENT_COLORS,
+  type Intent,
 } from "@/lib/email-utils";
 import type { Email } from "@/lib/types";
 
@@ -294,6 +298,33 @@ export function EmailDetail({
               emailId={email.id}
               starred={email.isStarred}
               size="md"
+            />
+          </div>
+          {/* Intent badge + HANDLE email (§16) */}
+          {email.intent ? (
+            <div className="mt-2">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                  INTENT_COLORS[email.intent as Intent] ?? INTENT_COLORS.FYI
+                )}
+              >
+                {INTENT_LABELS[email.intent as Intent] ?? email.intent}
+              </span>
+            </div>
+          ) : null}
+          <div className="mt-3">
+            <HandleEmailPanel
+              emailId={email.id}
+              onUseReply={(text) => {
+                navigator.clipboard?.writeText(text).catch(() => {});
+                openReply(email.id);
+                toast({
+                  title: "Draft copied",
+                  description: "Paste into your reply.",
+                  duration: 2500,
+                });
+              }}
             />
           </div>
           {email.labels && (

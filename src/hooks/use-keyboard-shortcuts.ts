@@ -45,6 +45,11 @@ export function useKeyboardShortcuts(onFocusSearch: () => void) {
   else if (folder === "STARRED") params.set("starred", "true");
   else if (folder === "IMPORTANT") params.set("important", "true");
   else if (folder === "SNOOZED") params.set("snoozed", "true");
+  else if (folder === "NOW") params.set("view", "now");
+  else if (folder === "REPLY") params.set("view", "reply");
+  else if (folder === "WAITING") params.set("view", "waiting");
+  else if (folder === "RECEIPTS") params.set("view", "receipts");
+  else if (folder === "SUBSCRIPTIONS") params.set("view", "subscriptions");
   else params.set("folder", folder);
   if (selectedLabel) params.set("label", selectedLabel);
 

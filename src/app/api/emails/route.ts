@@ -2,15 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import type { Folder } from "@/lib/types";
 import { seedEmails, seedLabels } from "@/lib/seed-data";
-import { makeSnippet, makeThreadId, textToHtml } from "@/lib/email-utils";
+import {
+  makeSnippet,
+  makeThreadId,
+  textToHtml,
+  classifyIntent,
+} from "@/lib/email-utils";
 
 export const dynamic = "force-dynamic";
 
 const FOLDERS: Folder[] = ["INBOX", "SENT", "DRAFTS", "SCHEDULED", "TRASH", "SPAM", "ARCHIVE"];
 
+// ComOS views (Communication OS): intent/state-based smart filters (§2)
+const COMOS_VIEWS = ["now", "reply", "waiting", "receipts", "subscriptions"];
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const folder = searchParams.get("folder") as Folder | null;
+  const view = searchParams.get("view"); // ComOS view
   const label = searchParams.get("label");
   const starred = searchParams.get("starred");
   const important = searchParams.get("important");
@@ -36,8 +45,68 @@ export async function GET(request: NextRequest) {
     OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
   };
 
-  // Snoozed view: emails with snoozedUntil in the future
-  if (snoozed === "true") {
+  // Communication OS views (§2): intent/state-based smart filters. These run
+  // before the folder branches and take precedence when ?view= is set.
+  if (view && COMOS_VIEWS.includes(view)) {
+    if (view === "now") {
+      where.folder = "INBOX";
+      where.AND = [
+        notSnoozed,
+        {
+          OR: [
+            { isRead: false },
+            { isImportant: true },
+            { intent: "REQUIRES_REPLY" },
+            { intent: "SECURITY_ALERT" },
+            { intent: "COMMITMENT" },
+            { intent: "MEETING" },
+          ],
+        },
+      ];
+    } else if (view === "reply") {
+      where.folder = { in: ["INBOX", "ARCHIVE"] };
+      where.intent = "REQUIRES_REPLY";
+      where.AND = [notSnoozed];
+    } else if (view === "waiting") {
+      // Emails the user sent that contain a question/commitment — the user is
+      // waiting on a response. Filter by sender = the user + a commitment/question.
+      where.folder = "SENT";
+      where.AND = [
+        {
+          OR: [
+            { intent: "COMMITMENT" },
+            { body: { contains: "?" } },
+          ],
+        },
+      ];
+    } else if (view === "receipts") {
+      where.folder = { in: ["INBOX", "SENT", "ARCHIVE"] };
+      where.AND = [
+        notSnoozed,
+        {
+          OR: [
+            { intent: "INVOICE" },
+            { intent: "RECEIPT" },
+            { intent: "ORDER" },
+            { intent: "SHIPMENT" },
+            { labels: { contains: "Finance" } },
+          ],
+        },
+      ];
+    } else if (view === "subscriptions") {
+      where.folder = { in: ["INBOX", "ARCHIVE"] };
+      where.AND = [
+        notSnoozed,
+        {
+          OR: [
+            { intent: "NEWSLETTER" },
+            { intent: "PROMOTION" },
+            { labels: { contains: "Newsletter" } },
+          ],
+        },
+      ];
+    }
+  } else if (snoozed === "true") {
     where.snoozedUntil = { gt: now };
     where.folder = { in: ["INBOX", "ARCHIVE"] };
   } else if (starred === "true") {
@@ -288,6 +357,7 @@ async function seedDatabase() {
 
   // Create emails
   for (const email of seedEmails) {
+    const intentResult = classifyIntent(email);
     await db.email.create({
       data: {
         threadId: email.threadId,
@@ -307,6 +377,7 @@ async function seedDatabase() {
         labels: email.labels,
         hasAttachment: email.hasAttachment,
         attachmentName: email.attachmentName,
+        intent: intentResult.intent,
       },
     });
   }

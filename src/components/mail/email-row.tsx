@@ -13,6 +13,9 @@ import {
   getAvatarColor,
   formatEmailTime,
   formatSnoozeUntil,
+  INTENT_LABELS,
+  INTENT_COLORS,
+  type Intent,
 } from "@/lib/email-utils";
 import { LABEL_COLORS } from "@/lib/types";
 
@@ -184,6 +187,16 @@ export function EmailRow({
           {email.isImportant && (
             <span className="inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" aria-label="Important" />
           )}
+          {email.intent && INTENT_LABELS[email.intent as Intent] ? (
+            <span
+              className={cn(
+                "flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                INTENT_COLORS[email.intent as Intent] ?? INTENT_COLORS.FYI
+              )}
+            >
+              {INTENT_LABELS[email.intent as Intent]}
+            </span>
+          ) : null}
           <span
             className={cn(
               "truncate text-sm",

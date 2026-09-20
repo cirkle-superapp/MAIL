@@ -2,7 +2,17 @@ import { create } from "zustand";
 import type { Folder } from "@/lib/types";
 import type { Category } from "@/lib/email-utils";
 
-export type SpecialView = "STARRED" | "IMPORTANT" | "SNOOZED";
+export type SpecialView =
+  | "STARRED"
+  | "IMPORTANT"
+  | "SNOOZED"
+  | "NOW"
+  | "REPLY"
+  | "WAITING"
+  | "COMMITMENTS"
+  | "PEOPLE"
+  | "RECEIPTS"
+  | "SUBSCRIPTIONS";
 export type ComposeMode = "new" | "reply" | "reply-all" | "forward" | "edit-draft";
 
 export interface MailState {

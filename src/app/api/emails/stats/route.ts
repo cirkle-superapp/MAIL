@@ -16,6 +16,9 @@ export async function GET() {
       labels: true,
       snoozedUntil: true,
       toEmails: true,
+      fromEmail: true,
+      intent: true,
+      body: true,
     },
   });
 
@@ -30,6 +33,12 @@ export async function GET() {
     STARRED: 0,
     IMPORTANT: 0,
     SNOOZED: 0,
+    // Communication OS views
+    NOW: 0,
+    REPLY: 0,
+    WAITING: 0,
+    RECEIPTS: 0,
+    SUBSCRIPTIONS: 0,
   };
   const unreadByFolder: Record<string, number> = {
     INBOX: 0,
@@ -44,6 +53,8 @@ export async function GET() {
 
   for (const e of all) {
     const isSnoozed = !!e.snoozedUntil && e.snoozedUntil > now;
+    const isUser = (e.fromEmail ?? "").toLowerCase() === "you@cirkle.mail";
+    const labels = (e.labels ?? "").toLowerCase();
 
     if (counts[e.folder] !== undefined) counts[e.folder] += 1;
     if (!e.isRead && unreadByFolder[e.folder] !== undefined)
@@ -57,6 +68,53 @@ export async function GET() {
       if (e.isImportant && ["INBOX", "SENT", "ARCHIVE"].includes(e.folder))
         counts.IMPORTANT += 1;
     }
+
+    // Communication OS view counts (mirror the GET /api/emails?view= filters)
+    if (!isSnoozed) {
+      // NOW: inbox + (unread OR important OR actionable intent)
+      if (
+        e.folder === "INBOX" &&
+        (!e.isRead ||
+          e.isImportant ||
+          ["REQUIRES_REPLY", "SECURITY_ALERT", "COMMITMENT", "MEETING"].includes(
+            e.intent ?? ""
+          ))
+      ) {
+        counts.NOW += 1;
+      }
+      // REPLY: requires-reply intent (not sent by user)
+      if (
+        !isUser &&
+        e.intent === "REQUIRES_REPLY" &&
+        ["INBOX", "ARCHIVE"].includes(e.folder)
+      ) {
+        counts.REPLY += 1;
+      }
+      // WAITING: user sent + contains a question/commitment
+      if (
+        isUser &&
+        e.folder === "SENT" &&
+        (e.intent === "COMMITMENT" || (e.body ?? "").includes("?"))
+      ) {
+        counts.WAITING += 1;
+      }
+      // RECEIPTS: invoice/receipt/order/shipment intent OR Finance label
+      if (
+        ["INVOICE", "RECEIPT", "ORDER", "SHIPMENT"].includes(e.intent ?? "") ||
+        labels.includes("finance")
+      ) {
+        if (["INBOX", "SENT", "ARCHIVE"].includes(e.folder)) counts.RECEIPTS += 1;
+      }
+      // SUBSCRIPTIONS: newsletter/promotion intent OR Newsletter label
+      if (
+        (["NEWSLETTER", "PROMOTION"].includes(e.intent ?? "") ||
+          labels.includes("newsletter")) &&
+        ["INBOX", "ARCHIVE"].includes(e.folder)
+      ) {
+        counts.SUBSCRIPTIONS += 1;
+      }
+    }
+
     if (e.labels) {
       for (const label of e.labels.split(",").map((s) => s.trim()).filter(Boolean)) {
         labelCounts[label] = (labelCounts[label] ?? 0) + 1;
