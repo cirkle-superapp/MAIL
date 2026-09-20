@@ -266,3 +266,40 @@ Pushed to GitHub: `bb10ae4..b246658 main -> main` (18 files, 639 insertions). Ve
 Stage Summary:
 - Cirkle Mail now also has: Gmail-style inbox category tabs (Primary/Promotions/Social/Updates), a full settings dialog (density + signature + send+archive + inbox type), email signatures, compact/comfortable density, Gmail search operators, and schedule send (with a Scheduled folder + simulated auto-delivery) — on top of the existing rich text compose, undo-send, snooze, undo toasts, reply-all, label assignment, row hover actions, draft editing, keyboard shortcuts, date grouping, HTML sanitizer, empty trash/spam, and the Cirkle gold+teal design system with the animated three-ring logo.
 - All features browser-verified; lint clean; pushed to https://github.com/cirkle-superapp/MAIL.
+
+---
+Task ID: O1-O9
+Agent: main (Z.ai Code)
+Task: Evolve toward a Communication OS (per 53-section spec) — audit, intent classification, workspace views, commitment engine, HANDLE email, command bar + push
+
+Pre-coding assessment (§52):
+- Audited current architecture: Email+Label models, 7 API routes, 16 mail components, 2 stores, rich-text compose, undo-send, snooze, schedule-send, inbox tabs, settings, search operators, row hover actions, draft editing, HTML sanitizer, keyboard shortcuts. LLM SDK (z-ai-web-dev-sdk) installed but UNUSED. No AI layer.
+- Gap analysis vs spec: missing intent classification, ComOS views (NOW/REPLY/WAITING/COMMITMENTS/PEOPLE/RECEIPTS/SUBSCRIPTIONS), commitment engine, HANDLE email, conversation reconstruction, NL command bar, AI architecture.
+- Decision: implement a foundational, additive vertical slice that transforms the platform toward a Communication OS while preserving ALL existing mail functionality. AI as orchestration layer (§28); database stays authoritative.
+
+Work Log:
+- Schema: added `intent String` to Email + new `Commitment` model (emailId/threadId/owner/action/dueDate/status/confidence/evidence/direction) + indexes. db:push.
+- Intent classifier (`classifyIntent` in email-utils): deterministic rules → 15 intents (REQUIRES_REPLY/FYI/INVOICE/RECEIPT/ORDER/SHIPMENT/COMMITMENT/MEETING/NEWSLETTER/PROMOTION/NOTIFICATION/SECURITY_ALERT/SOCIAL/PERSONAL/BUSINESS) with confidence + reason. INTENT_LABELS + INTENT_COLORS for badges. detectCommitments() extracts "I will…/We will…/Please send…" signals with owner/direction/due/evidence. isPurchaseLike/isSubscriptionLike detectors.
+- AI layer (`src/lib/ai.ts`, backend-only z-ai-web-dev-sdk): aiClassify (intent refinement), aiHandleEmail (source-grounded HANDLE analysis → summary/keyInfo/commitments/openQuestions/suggestedReply/followUp/risk/confidence/provenance), aiInterpretCommand (NL command interpretation). All gracefully fall back to deterministic results if the LLM is unavailable (§44).
+- AI API: /api/ai/classify (POST — deterministic + optional LLM, persists intent), /api/ai/handle (POST — HANDLE email, source-grounded, merges AI + deterministic commitments), /api/ai/command (POST — deterministic fast-path + LLM fallback for command interpretation).
+- GET /api/emails extended with `?view=` for ComOS views (now/reply/waiting/receipts/subscriptions) — intent/state-based compound filters. Seed now populates `intent` via classifyIntent. [id] PATCH supports intent (manual override §33). Stats endpoint computes NOW/REPLY/WAITING/RECEIPTS/SUBSCRIPTIONS counts.
+- /api/commitments GET derives commitments across all mail (committed as a view layer over the authoritative messages §28).
+- Workspace navigation (§2): new sidebar "Workspace" section (Now/Reply/Waiting/Commitments/People/Receipts/Subscriptions) with live counts, distinct accent styling. SpecialView type extended. buildListQuery routes the views. EmailList delegates COMMITMENTS→CommitmentsView + PEOPLE→PeopleView (dedicated components); the flat-list views (now/reply/waiting/receipts/subscriptions) reuse the standard list.
+- Intent badges on email rows + in the detail header (colored chips).
+- HANDLE email panel (`handle-email-panel.tsx`): "Handle" button in the reading pane runs the AI analysis, shows intent/risk/confidence/summary/keyInfo/commitments(openQuestions/suggestedReply/followUp with source quotes + provenance. "Use as reply" copies the draft + opens compose.
+- CommitmentsView + PeopleView (`workspace-views.tsx`): structured commitment cards (who/action/due/source/open-email/mark-handled) + contact cards.
+- Universal command bar (`command-bar.tsx`, Cmd/Ctrl+K): NL input + suggestions + interpretation preview + routing to search/view/compose/answer.
+
+Verification (agent-browser), all passing:
+- Workspace nav renders with counts: Now 4, Reply 1, Waiting 3, Receipts 2, Subscriptions 2 (Commitments/People have no count — dedicated views).
+- Intent badges on rows: Commitment / Needs reply / Newsletter / Receipt visible.
+- ComOS views: Receipts→2 emails (Acme + City Tax); Now→4; Reply→1.
+- Handle panel: opens on click, shows intent/risk/confidence/summary/provenance. Graceful fallback when the LLM is unavailable ("AI analysis unavailable — showing a basic summary", confidence 30%) — architecture degrades cleanly (§44).
+- Command bar: Cmd+K opens; "show what needs a reply" → routed to the Reply view (1 email).
+- `bun run lint` clean (0 errors, 0 warnings).
+- Stale Prisma client after schema change → fixed by restarting the dev server.
+
+Pushed to GitHub: `b246658..69c73d0 main -> main`. Verified via GitHub API: remote HEAD = 69c73d0. Token used transiently only.
+
+Stage Summary:
+- Cirkle Mail now has a Communication OS layer ON TOP of the existing Gmail-like mail: intent-aware classification (15 intents, persisted + badged), a Workspace nav (Now/Reply/Waiting/Commitments/People/Receipts/Subscriptions) as smart intent/state filters, a commitment engine (detection + dedicated view), HANDLE email (source-grounded AI workflow proposals with provenance + graceful fallback), and a universal NL command bar (Cmd+K) — all preserving the existing folders, tabs, compose, search, snooze, schedule-send, settings, and the Cirkle design system. AI is an orchestration layer; the database remains authoritative and every AI output is traceable to source records.
