@@ -2,14 +2,18 @@ import { create } from "zustand";
 import type { Folder } from "@/lib/types";
 
 export type SpecialView = "STARRED" | "IMPORTANT" | "SNOOZED";
+export type ComposeMode = "new" | "reply" | "reply-all" | "forward";
 
 export interface MailState {
   folder: Folder | SpecialView;
   selectedLabel: string | null;
   searchQuery: string;
   selectedEmailId: string | null;
+  // Compose state (unified so any caller — sidebar, detail, shortcuts —
+  // can open the compose dialog in any mode)
   composeOpen: boolean;
-  composeReplyTo: string | null;
+  composeMode: ComposeMode;
+  composeEmailId: string | null;
   searchInput: string;
   // actions
   setFolder: (f: Folder | SpecialView) => void;
@@ -17,7 +21,10 @@ export interface MailState {
   setSearchQuery: (q: string) => void;
   setSearchInput: (q: string) => void;
   setSelectedEmailId: (id: string | null) => void;
-  openCompose: (replyTo?: string) => void;
+  openCompose: () => void;
+  openReply: (emailId: string) => void;
+  openReplyAll: (emailId: string) => void;
+  openForward: (emailId: string) => void;
   closeCompose: () => void;
 }
 
@@ -27,7 +34,8 @@ export const useMailStore = create<MailState>((set) => ({
   searchQuery: "",
   selectedEmailId: null,
   composeOpen: false,
-  composeReplyTo: null,
+  composeMode: "new",
+  composeEmailId: null,
   searchInput: "",
   setFolder: (f) =>
     set((s) => ({
@@ -40,7 +48,14 @@ export const useMailStore = create<MailState>((set) => ({
   setSearchQuery: (q) => set({ searchQuery: q, selectedEmailId: null }),
   setSearchInput: (q) => set({ searchInput: q }),
   setSelectedEmailId: (id) => set({ selectedEmailId: id }),
-  openCompose: (replyTo) =>
-    set({ composeOpen: true, composeReplyTo: replyTo ?? null }),
-  closeCompose: () => set({ composeOpen: false, composeReplyTo: null }),
+  openCompose: () =>
+    set({ composeOpen: true, composeMode: "new", composeEmailId: null }),
+  openReply: (emailId) =>
+    set({ composeOpen: true, composeMode: "reply", composeEmailId: emailId }),
+  openReplyAll: (emailId) =>
+    set({ composeOpen: true, composeMode: "reply-all", composeEmailId: emailId }),
+  openForward: (emailId) =>
+    set({ composeOpen: true, composeMode: "forward", composeEmailId: emailId }),
+  closeCompose: () =>
+    set({ composeOpen: false, composeMode: "new", composeEmailId: null }),
 }));

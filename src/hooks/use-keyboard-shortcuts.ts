@@ -12,7 +12,9 @@ import { toast } from "@/hooks/use-toast";
  * - #      : move the selected conversation to Trash
  * - s      : toggle star on the selected conversation
  * - c      : compose a new message
+ * - r / a / f : reply / reply-all / forward the open conversation
  * - /      : focus the search bar
+ * - ?      : show the keyboard shortcuts help dialog
  * - Esc    : close compose / go back to list
  * Shortcuts are ignored while typing in inputs, textareas, or contentEditable.
  */
@@ -24,6 +26,9 @@ export function useKeyboardShortcuts(onFocusSearch: () => void) {
   const setSelectedEmailId = useMailStore((s) => s.setSelectedEmailId);
   const composeOpen = useMailStore((s) => s.composeOpen);
   const openCompose = useMailStore((s) => s.openCompose);
+  const openReply = useMailStore((s) => s.openReply);
+  const openReplyAll = useMailStore((s) => s.openReplyAll);
+  const openForward = useMailStore((s) => s.openForward);
   const closeCompose = useMailStore((s) => s.closeCompose);
   const invalidate = useInvalidateMail();
 
@@ -114,6 +119,33 @@ export function useKeyboardShortcuts(onFocusSearch: () => void) {
         return;
       }
 
+      // Show keyboard shortcut help
+      if (key === "?") {
+        e.preventDefault();
+        window.dispatchEvent(new Event("cirkle:show-shortcuts"));
+        return;
+      }
+
+      // r / a / f reply / reply-all / forward (only when a message is open)
+      if (key === "r") {
+        if (!selectionRef.current) return;
+        e.preventDefault();
+        openReply(selectionRef.current);
+        return;
+      }
+      if (key === "a") {
+        if (!selectionRef.current) return;
+        e.preventDefault();
+        openReplyAll(selectionRef.current);
+        return;
+      }
+      if (key === "f") {
+        if (!selectionRef.current) return;
+        e.preventDefault();
+        openForward(selectionRef.current);
+        return;
+      }
+
       // Escape: close compose, else go back to list
       if (key === "Escape") {
         if (composeRef.current) {
@@ -169,6 +201,15 @@ export function useKeyboardShortcuts(onFocusSearch: () => void) {
           .then((r) => r.json())
           .then((d) =>
             patchEmail(sel, { isStarred: !d.email?.isStarred })
+          );
+        return;
+      }
+      if (key === "i") {
+        e.preventDefault();
+        fetch(`/api/emails/${sel}`)
+          .then((r) => r.json())
+          .then((d) =>
+            patchEmail(sel, { isImportant: !d.email?.isImportant })
           );
         return;
       }

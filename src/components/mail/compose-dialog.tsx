@@ -7,52 +7,38 @@ import {
   Maximize2,
   Paperclip,
   Send,
-  ChevronDown,
   Trash2,
   Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useMailStore } from "@/store/mail-store";
-import { useInvalidateMail } from "@/hooks/use-mail";
+import { useMailStore, type ComposeMode } from "@/store/mail-store";
+import { useEmailDetail, useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { makeSnippet, textToHtml, formatFullDate } from "@/lib/email-utils";
-import type { Email } from "@/lib/types";
 import { RichTextEditor } from "@/components/mail/rich-text-editor";
 import { RecipientInput } from "@/components/mail/recipient-input";
-
-interface ComposeDialogProps {
-  open?: boolean;
-  onOpenChange?: (v: boolean) => void;
-  replyToEmail?: Email | null;
-  forwardEmail?: Email | null;
-}
+import type { Email } from "@/lib/types";
 
 type WindowState = "normal" | "minimized" | "maximized";
-type ComposeMode = "new" | "reply" | "forward";
 
 const UNDO_WINDOW_MS = 5000;
+const SELF = "you@cirkle.mail";
 
-export function ComposeDialog({
-  open: openProp,
-  onOpenChange: onOpenChangeProp,
-  replyToEmail,
-  forwardEmail,
-}: ComposeDialogProps) {
-  const storeOpen = useMailStore((s) => s.composeOpen);
-  const closeStore = useMailStore((s) => s.closeCompose);
+export function ComposeDialog() {
+  const open = useMailStore((s) => s.composeOpen);
+  const mode: ComposeMode = useMailStore((s) => s.composeMode);
+  const composeEmailId = useMailStore((s) => s.composeEmailId);
+  const closeCompose = useMailStore((s) => s.closeCompose);
   const invalidate = useInvalidateMail();
 
-  const open = openProp ?? storeOpen;
-  const setOpen = (v: boolean) => {
-    onOpenChangeProp?.(v);
-    if (!v) closeStore();
-  };
-
-  const mode: ComposeMode = forwardEmail ? "forward" : replyToEmail ? "reply" : "new";
-  const sourceEmail = forwardEmail ?? replyToEmail ?? null;
+  // Fetch the source email when replying / forwarding
+  const { data: sourceData } = useEmailDetail(
+    mode === "new" ? null : composeEmailId
+  );
+  const sourceEmail: Email | null = sourceData?.email ?? null;
 
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
@@ -70,18 +56,25 @@ export function ComposeDialog({
   // Pre-fill on open or when the source/mode changes
   useEffect(() => {
     if (!open) return;
+
     if (mode === "reply" && sourceEmail) {
       setTo(sourceEmail.fromEmail);
       setCc(sourceEmail.ccEmails || "");
       setBcc("");
-      const subj = sourceEmail.subject.toLowerCase().startsWith("re:")
-        ? sourceEmail.subject
-        : "Re: " + sourceEmail.subject;
-      setSubject(subj);
-      setBodyHtml(
-        `<p><br></p><p>On ${formatFullDate(sourceEmail.date)}, ${sourceEmail.fromName} wrote:</p><blockquote style="border-left:2px solid #ccc;padding-left:8px;color:#666;margin:0">${sourceEmail.body}</blockquote>`
-      );
+      setReplySubject(sourceEmail);
+      setReplyBody(sourceEmail);
       setShowCc(!!sourceEmail.ccEmails);
+    } else if (mode === "reply-all" && sourceEmail) {
+      // Reply-all: To = sender + original To (minus self); CC = original CC
+      const recipients = [sourceEmail.fromEmail, ...splitAddrs(sourceEmail.toEmails)]
+        .filter((a) => a && a.toLowerCase() !== SELF)
+        .filter(dedupe);
+      setTo(recipients.join(", "));
+      setCc(sourceEmail.ccEmails || "");
+      setBcc("");
+      setReplySubject(sourceEmail);
+      setReplyBody(sourceEmail);
+      setShowCc(!!sourceEmail.ccEmails || recipients.length > 1);
     } else if (mode === "forward" && sourceEmail) {
       setTo("");
       setCc("");
@@ -94,16 +87,19 @@ export function ComposeDialog({
         `<p><br></p><p>---------- Forwarded message ----------</p><p>From: ${sourceEmail.fromName} &lt;${sourceEmail.fromEmail}&gt;<br>Date: ${formatFullDate(sourceEmail.date)}<br>Subject: ${sourceEmail.subject}</p><br>${sourceEmail.body}`
       );
       setShowCc(false);
-      if (sourceEmail.hasAttachment) setAttachmentName(sourceEmail.attachmentName);
+      setAttachmentName(
+        sourceEmail.hasAttachment ? sourceEmail.attachmentName : ""
+      );
     } else {
+      // New compose
       setTo("");
       setCc("");
       setBcc("");
       setSubject("");
       setBodyHtml("");
       setShowCc(false);
+      setAttachmentName("");
     }
-    setAttachmentName((prev) => (mode === "forward" && sourceEmail?.hasAttachment ? sourceEmail.attachmentName : ""));
     setWindowState("normal");
     setEditorKey((k) => k + 1);
   }, [open, mode, sourceEmail?.id]);
@@ -116,6 +112,17 @@ export function ComposeDialog({
   }, []);
 
   if (!open) return null;
+
+  function setReplySubject(src: Email) {
+    setSubject(
+      src.subject.toLowerCase().startsWith("re:") ? src.subject : "Re: " + src.subject
+    );
+  }
+  function setReplyBody(src: Email) {
+    setBodyHtml(
+      `<p><br></p><p>On ${formatFullDate(src.date)}, ${src.fromName} wrote:</p><blockquote style="border-left:2px solid #ccc;padding-left:8px;color:#666;margin:0">${src.body}</blockquote>`
+    );
+  }
 
   function buildPayload(isDraft = false) {
     return {
@@ -144,8 +151,7 @@ export function ComposeDialog({
         invalidate();
         setSending(false);
         pendingSendRef.current = null;
-        // keep the "sent" toast visible briefly then close
-        setTimeout(() => setOpen(false), 200);
+        setTimeout(() => closeCompose(), 200);
       })
       .catch((e) => {
         setSending(false);
@@ -165,16 +171,10 @@ export function ComposeDialog({
     }
     setSending(true);
     const payload = buildPayload(false);
-
-    // "Sending…" toast briefly
     toast({ title: "Sending…", duration: 1200 });
-
-    // Hold the actual send for the undo window
     pendingSendRef.current = setTimeout(() => {
       actuallySend(payload);
     }, UNDO_WINDOW_MS);
-
-    // Show the undo-able toast
     toast({
       title: "Message sent",
       description: "Undo available for 5s",
@@ -185,8 +185,6 @@ export function ComposeDialog({
         </ToastAction>
       ),
     });
-
-    // Visually close the compose window while the undo window runs
     setWindowState("minimized");
   }
 
@@ -212,20 +210,27 @@ export function ComposeDialog({
       if (!res.ok) throw new Error("Failed");
       invalidate();
       toast({ title: "Draft saved", duration: 1500 });
-      setOpen(false);
+      closeCompose();
     } catch {
       toast({ title: "Could not save draft", variant: "destructive" });
     }
   }
 
   function handleDiscard() {
-    setOpen(false);
-    if (!to && !subject && !bodyHtml) return;
-    // Silent discard — no DB write
+    closeCompose();
   }
 
   void makeSnippet(bodyHtml);
   void textToHtml(bodyHtml);
+
+  const titleText =
+    mode === "reply"
+      ? `Reply: ${subject || "(no subject)"}`
+      : mode === "reply-all"
+      ? `Reply all: ${subject || "(no subject)"}`
+      : mode === "forward"
+      ? `Forward: ${subject || "(no subject)"}`
+      : subject || "New message";
 
   return (
     <div
@@ -245,13 +250,7 @@ export function ComposeDialog({
         className="flex h-10 flex-shrink-0 cursor-default items-center gap-2 rounded-t-xl bg-muted/60 px-3 text-foreground"
         onClick={() => windowState === "minimized" && setWindowState("normal")}
       >
-        <span className="flex-1 truncate text-xs font-medium">
-          {mode === "reply"
-            ? `Reply: ${subject || "(no subject)"}`
-            : mode === "forward"
-            ? `Forward: ${subject || "(no subject)"}`
-            : subject || "New message"}
-        </span>
+        <span className="flex-1 truncate text-xs font-medium">{titleText}</span>
         {sending && (
           <span className="text-[10px] text-muted-foreground">sending…</span>
         )}
@@ -396,4 +395,16 @@ export function ComposeDialog({
       )}
     </div>
   );
+}
+
+function splitAddrs(value: string): string[] {
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function dedupe(addr: string, idx: number, arr: string[]): boolean {
+  const lower = addr.toLowerCase();
+  return arr.findIndex((a) => a.toLowerCase() === lower) === idx;
 }

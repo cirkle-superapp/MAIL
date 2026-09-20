@@ -29,10 +29,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmailRow } from "@/components/mail/email-row";
 import { SnoozeMenu } from "@/components/mail/snooze-menu";
+import { LabelMenu } from "@/components/mail/label-menu";
+import { showUndoToast } from "@/components/mail/undo-toast";
 import { useMailStore } from "@/store/mail-store";
 import { useEmailList, useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
 import { type Email, type Folder } from "@/lib/types";
+import { dateBucket } from "@/lib/email-utils";
 
 const FOLDER_META: Record<
   Folder | "STARRED" | "IMPORTANT" | "SNOOZED",
@@ -96,6 +99,101 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
     }
   }
 
+  // Capture prev state per selected email, apply a bulk change, show an undo
+  // toast that reverts each email to its prior state.
+  function bulkUpdateWithUndo(
+    payload: Record<string, unknown>,
+    msg: string,
+    revertKey: "folder" | "snoozedUntil"
+  ) {
+    if (selected.size === 0) return;
+    const prev = new Map<string, string | null>();
+    for (const e of emails) {
+      if (selected.has(e.id)) {
+        prev.set(e.id, revertKey === "folder" ? e.folder : e.snoozedUntil);
+      }
+    }
+    fetch("/api/emails", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: Array.from(selected), ...payload }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Update failed");
+        setSelected(new Set());
+        invalidate();
+        showUndoToast(msg, () => revertBulk(revertKey, prev));
+      })
+      .catch(() => toast({ title: "Action failed", variant: "destructive" }));
+  }
+
+  async function revertBulk(
+    key: "folder" | "snoozedUntil",
+    prev: Map<string, string | null>
+  ) {
+    try {
+      await Promise.all(
+        Array.from(prev.entries()).map(([id, val]) =>
+          fetch(`/api/emails/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(
+              key === "folder"
+                ? { folder: val }
+                : { snoozedUntil: val }
+            ),
+          })
+        )
+      );
+      invalidate();
+      toast({ title: "Undo: restored", duration: 1500 });
+    } catch {
+      toast({ title: "Undo failed", variant: "destructive" });
+    }
+  }
+
+  async function bulkToggleLabel(label: string, checked: boolean) {
+    if (selected.size === 0) return;
+    const targets = emails.filter((e) => selected.has(e.id));
+    try {
+      await Promise.all(
+        targets.map((e) => {
+          const current = e.labels
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const next = checked
+            ? Array.from(new Set([...current, label]))
+            : current.filter((l) => l !== label);
+          return fetch(`/api/emails/${e.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ labels: next.join(",") }),
+          });
+        })
+      );
+      invalidate();
+      toast({
+        title: checked ? `Added label "${label}"` : `Removed label "${label}"`,
+        duration: 1500,
+      });
+    } catch {
+      toast({ title: "Label update failed", variant: "destructive" });
+    }
+  }
+
+  // Labels active on ALL selected emails (for the bulk LabelMenu checkbox state)
+  const bulkActiveLabels = (() => {
+    const targets = emails.filter((e) => selected.has(e.id));
+    if (targets.length === 0) return new Set<string>();
+    return targets[0].labels
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((label) => targets.every((t) => t.labels.includes(label)))
+      .reduce<Set<string>>((set, l) => set.add(l), new Set());
+  })();
+
   async function markReadAll(isRead: boolean) {
     await bulkUpdate({ isRead }, `Marked ${isRead ? "read" : "unread"}`);
   }
@@ -116,7 +214,7 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
             folder={folder}
             onClear={() => setSelected(new Set())}
             onArchive={() =>
-              bulkUpdate({ folder: "ARCHIVE" }, "Archived")
+              bulkUpdateWithUndo({ folder: "ARCHIVE" }, "Archived", "folder")
             }
             onDelete={() => {
               if (folder === "TRASH") {
@@ -138,13 +236,19 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
                     })
                   );
               } else {
-                bulkUpdate({ folder: "TRASH" }, "Moved to Trash");
+                bulkUpdateWithUndo({ folder: "TRASH" }, "Moved to Trash", "folder");
               }
             }}
             onMarkRead={() => markReadAll(true)}
             onMarkUnread={() => markReadAll(false)}
-            onSnooze={(iso) => bulkUpdate({ snoozedUntil: iso }, "Snoozed")}
-            onUnsnooze={() => bulkUpdate({ snoozedUntil: null }, "Unsnoozed")}
+            onSnooze={(iso) =>
+              bulkUpdateWithUndo({ snoozedUntil: iso }, "Snoozed", "snoozedUntil")
+            }
+            onUnsnooze={() =>
+              bulkUpdateWithUndo({ snoozedUntil: null }, "Unsnoozed", "snoozedUntil")
+            }
+            activeLabels={bulkActiveLabels}
+            onToggleLabel={bulkToggleLabel}
           />
         ) : (
           <div className="flex w-full items-center gap-2">
@@ -206,23 +310,71 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
         ) : emails.length === 0 ? (
           <EmptyState folder={folder} search={!!searchQuery} />
         ) : (
+          <DateGroupedEmailList
+            emails={emails}
+            selected={selected}
+            activeId={selectedEmailId}
+            onToggleSelect={toggleSelect}
+            onOpen={(id) => {
+              setSelectedEmailId(id);
+              onOpenEmail(id);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+const BUCKET_ORDER = ["Today", "Yesterday", "This week", "This month", "Earlier"] as const;
+
+function DateGroupedEmailList({
+  emails,
+  selected,
+  activeId,
+  onToggleSelect,
+  onOpen,
+}: {
+  emails: Email[];
+  selected: Set<string>;
+  activeId: string | null;
+  onToggleSelect: (id: string) => void;
+  onOpen: (id: string) => void;
+}) {
+  // Bucket emails preserving the date-desc order from the API
+  const groups = new Map<string, Email[]>();
+  for (const e of emails) {
+    const bucket = dateBucket(e.date);
+    if (!groups.has(bucket)) groups.set(bucket, []);
+    groups.get(bucket)!.push(e);
+  }
+
+  return (
+    <div>
+      {BUCKET_ORDER.filter((b) => groups.has(b)).map((bucket) => (
+        <section key={bucket}>
+          <div className="sticky top-0 z-10 flex h-7 items-center border-b border-border/60 bg-muted/40 px-4 backdrop-blur-sm">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {bucket}
+            </span>
+            <span className="ml-2 text-[10px] text-muted-foreground/70">
+              {groups.get(bucket)!.length}
+            </span>
+          </div>
           <ul className="divide-y divide-border/60">
-            {emails.map((email) => (
+            {groups.get(bucket)!.map((email) => (
               <EmailRow
                 key={email.id}
                 email={email}
                 selected={selected.has(email.id)}
-                active={selectedEmailId === email.id}
-                onSelect={() => toggleSelect(email.id)}
-                onOpen={() => {
-                  setSelectedEmailId(email.id);
-                  onOpenEmail(email.id);
-                }}
+                active={activeId === email.id}
+                onSelect={() => onToggleSelect(email.id)}
+                onOpen={() => onOpen(email.id)}
               />
             ))}
           </ul>
-        )}
-      </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -237,6 +389,8 @@ function BulkToolbar({
   onMarkUnread,
   onSnooze,
   onUnsnooze,
+  activeLabels,
+  onToggleLabel,
 }: {
   count: number;
   folder: string;
@@ -247,6 +401,8 @@ function BulkToolbar({
   onMarkUnread: () => void;
   onSnooze: (iso: string) => void;
   onUnsnooze: () => void;
+  activeLabels: Set<string>;
+  onToggleLabel: (label: string, checked: boolean) => void;
 }) {
   return (
     <div className="flex w-full items-center gap-1">
@@ -265,6 +421,11 @@ function BulkToolbar({
         </Tooltip>
       </TooltipProvider>
       <SnoozeMenu onSnooze={onSnooze} onUnsnooze={onUnsnooze} />
+      <LabelMenu
+        activeLabels={activeLabels}
+        onToggle={onToggleLabel}
+        size="sm"
+      />
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>

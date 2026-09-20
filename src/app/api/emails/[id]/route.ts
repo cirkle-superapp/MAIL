@@ -39,6 +39,7 @@ export async function PATCH(
   if (typeof body?.subject === "string") data.subject = body.subject;
   if (typeof body?.toEmails === "string") data.toEmails = body.toEmails;
   if (typeof body?.ccEmails === "string") data.ccEmails = body.ccEmails;
+  if (typeof body?.labels === "string") data.labels = body.labels;
   if (body?.snoozedUntil !== undefined) {
     data.snoozedUntil = body.snoozedUntil ? new Date(body.snoozedUntil) : null;
   }

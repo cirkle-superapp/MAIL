@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/mail/sidebar";
 import { EmailList } from "@/components/mail/email-list";
 import { EmailDetail } from "@/components/mail/email-detail";
 import { ComposeDialog } from "@/components/mail/compose-dialog";
+import { ShortcutsHelpDialog } from "@/components/mail/shortcuts-help";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useMailStore } from "@/store/mail-store";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -18,7 +19,6 @@ export function MailApp() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const selectedEmailId = useMailStore((s) => s.selectedEmailId);
   const setSelectedEmailId = useMailStore((s) => s.setSelectedEmailId);
-  const composeOpen = useMailStore((s) => s.composeOpen);
 
   // Keyboard shortcuts ("/" dispatches a focus-search event the TopBar listens for)
   useKeyboardShortcuts(() =>
@@ -90,7 +90,8 @@ export function MailApp() {
         </div>
       </div>
 
-      <ComposeDialog open={composeOpen} />
+      <ComposeDialog />
+      <ShortcutsHelpDialog />
     </div>
   );
 }

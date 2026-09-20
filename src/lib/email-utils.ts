@@ -1,4 +1,4 @@
-import { format, formatDistanceToNow, isToday, isYesterday, isThisYear } from "date-fns";
+import { format, formatDistanceToNow, isToday, isYesterday, isThisWeek, isThisMonth, isThisYear } from "date-fns";
 
 export function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -151,4 +151,15 @@ export function formatSnoozeUntil(dateStr: string): string {
   if (sameDay) return `Today, ${time}`;
   if (isTomorrow) return `Tomorrow, ${time}`;
   return format(d, "EEE, MMM d, h:mm a");
+}
+
+export type DateBucket = "Today" | "Yesterday" | "This week" | "This month" | "Earlier";
+
+export function dateBucket(dateStr: string | Date): DateBucket {
+  const d = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
+  if (isToday(d)) return "Today";
+  if (isYesterday(d)) return "Yesterday";
+  if (isThisWeek(d)) return "This week";
+  if (isThisMonth(d)) return "This month";
+  return "Earlier";
 }

@@ -12,6 +12,7 @@ import {
   Clock,
   MailOpen,
   ReplyAll,
+  AlertCircle,
   Printer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { StarButton } from "@/components/mail/star-button";
 import { SnoozeMenu } from "@/components/mail/snooze-menu";
-import { ComposeDialog } from "@/components/mail/compose-dialog";
+import { LabelMenu } from "@/components/mail/label-menu";
+import { showUndoToast } from "@/components/mail/undo-toast";
 import { useMailStore } from "@/store/mail-store";
 import { useEmailDetail, useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
@@ -44,17 +46,17 @@ import {
 } from "@/lib/email-utils";
 import type { Email } from "@/lib/types";
 
-type ComposeMode = "none" | "reply" | "forward";
-
 export function EmailDetail({
   onBack,
 }: {
   onBack: () => void;
 }) {
   const id = useMailStore((s) => s.selectedEmailId);
+  const openReply = useMailStore((s) => s.openReply);
+  const openReplyAll = useMailStore((s) => s.openReplyAll);
+  const openForward = useMailStore((s) => s.openForward);
   const { data, isLoading } = useEmailDetail(id);
   const invalidate = useInvalidateMail();
-  const [composeMode, setComposeMode] = useState<ComposeMode>("none");
 
   const email = data?.email;
   const thread = data?.thread;
@@ -111,11 +113,41 @@ export function EmailDetail({
     }
   }
 
+  async function patchSilent(payload: Record<string, unknown>) {
+    if (!email) return;
+    const res = await fetch(`/api/emails/${email.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("Failed");
+    invalidate();
+  }
+
+  async function revertPatch(payload: Record<string, unknown>) {
+    try {
+      await patchSilent(payload);
+      toast({ title: "Undo: restored", duration: 1500 });
+    } catch {
+      toast({ title: "Undo failed", variant: "destructive" });
+    }
+  }
+
   function archive() {
-    patch({ folder: "ARCHIVE" }, "Archived").then(() => onBack());
+    const prevFolder = email.folder;
+    patchSilent({ folder: "ARCHIVE" }).then(() => {
+      onBack();
+      showUndoToast("Archived", () => revertPatch({ folder: prevFolder }));
+    });
   }
   function trash() {
-    patch({ folder: "TRASH" }, "Moved to Trash").then(() => onBack());
+    const prevFolder = email.folder;
+    patchSilent({ folder: "TRASH" }).then(() => {
+      onBack();
+      showUndoToast("Moved to Trash", () =>
+        revertPatch({ folder: prevFolder })
+      );
+    });
   }
   function markUnread() {
     patch({ isRead: false }, "Marked as unread").then(() => onBack());
@@ -131,10 +163,31 @@ export function EmailDetail({
       .catch(() => toast({ title: "Delete failed", variant: "destructive" }));
   }
   function snooze(untilISO: string) {
-    patch({ snoozedUntil: untilISO }, "Snoozed").then(() => onBack());
+    patchSilent({ snoozedUntil: untilISO }).then(() => {
+      onBack();
+      showUndoToast("Snoozed", () => revertPatch({ snoozedUntil: null }));
+    });
   }
   function unsnooze() {
     patch({ snoozedUntil: null }, "Unsnoozed");
+  }
+  function toggleImportant() {
+    if (!email) return;
+    patchSilent({ isImportant: !email.isImportant });
+  }
+  function applyLabel(label: string) {
+    if (!email) return;
+    const current = splitLabels(email.labels);
+    if (current.includes(label)) return;
+    const next = [...current, label].join(",");
+    patchSilent({ labels: next });
+  }
+  function removeLabel(label: string) {
+    if (!email) return;
+    const next = splitLabels(email.labels)
+      .filter((l) => l !== label)
+      .join(",");
+    patchSilent({ labels: next });
   }
 
   const isTrash = email.folder === "TRASH";
@@ -186,13 +239,30 @@ export function EmailDetail({
           isSnoozed={isSnoozed}
           snoozedUntil={email.snoozedUntil}
         />
-        <ActionBtn label="Reply" onClick={() => setComposeMode("reply")}>
+        <ActionBtn
+          label={email.isImportant ? "Remove importance" : "Mark important"}
+          onClick={toggleImportant}
+        >
+          <AlertCircle
+            className={cn(
+              "h-[1.05rem] w-[1.05rem]",
+              email.isImportant && "text-accent"
+            )}
+          />
+        </ActionBtn>
+        <LabelMenu
+          activeLabels={new Set(splitLabels(email.labels))}
+          onToggle={(label, checked) =>
+            checked ? applyLabel(label) : removeLabel(label)
+          }
+        />
+        <ActionBtn label="Reply" onClick={() => openReply(email.id)}>
           <Reply className="h-[1.05rem] w-[1.05rem]" />
         </ActionBtn>
-        <ActionBtn label="Reply all" onClick={() => setComposeMode("reply")}>
+        <ActionBtn label="Reply all" onClick={() => openReplyAll(email.id)}>
           <ReplyAll className="h-[1.05rem] w-[1.05rem]" />
         </ActionBtn>
-        <ActionBtn label="Forward" onClick={() => setComposeMode("forward")}>
+        <ActionBtn label="Forward" onClick={() => openForward(email.id)}>
           <Forward className="h-[1.05rem] w-[1.05rem]" />
         </ActionBtn>
         <DropdownMenu>
@@ -250,8 +320,8 @@ export function EmailDetail({
                 email={msg}
                 isLast={idx === sortedThread.length - 1}
                 isThreaded={isThreaded}
-                onReply={() => setComposeMode("reply")}
-                onForward={() => setComposeMode("forward")}
+                onReply={() => openReply(msg.id)}
+                onForward={() => openForward(msg.id)}
               />
             ))}
           </div>
@@ -263,25 +333,25 @@ export function EmailDetail({
         <Button
           variant="outline"
           className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
-          onClick={() => setComposeMode("reply")}
+          onClick={() => openReply(email.id)}
         >
           <Reply className="mr-2 h-4 w-4" /> Reply
         </Button>
         <Button
           variant="outline"
           className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
-          onClick={() => setComposeMode("forward")}
+          onClick={() => openReplyAll(email.id)}
+        >
+          <ReplyAll className="mr-2 h-4 w-4" /> Reply all
+        </Button>
+        <Button
+          variant="outline"
+          className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
+          onClick={() => openForward(email.id)}
         >
           <Forward className="mr-2 h-4 w-4" /> Forward
         </Button>
       </div>
-
-      <ComposeDialog
-        open={composeMode !== "none"}
-        onOpenChange={(v) => !v && setComposeMode("none")}
-        replyToEmail={composeMode === "reply" ? email : null}
-        forwardEmail={composeMode === "forward" ? email : null}
-      />
     </div>
   );
 }
@@ -468,4 +538,12 @@ function EmptyDetail() {
       </div>
     </div>
   );
+}
+
+function splitLabels(value?: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
