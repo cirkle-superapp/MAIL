@@ -163,3 +163,57 @@ export function dateBucket(dateStr: string | Date): DateBucket {
   if (isThisMonth(d)) return "This month";
   return "Earlier";
 }
+
+/**
+ * Sanitize an HTML email body before rendering with dangerouslySetInnerHTML.
+ * Strips <script>/<style>/<iframe>/<object>/<embed>/<form>/<meta>/<link>/<base>,
+ * removes on* event-handler attributes, and neutralizes javascript: URLs in
+ * href/src. Runs in the browser via DOMParser; falls back to the raw input
+ * (already trusted seed data) if DOMParser is unavailable (SSR).
+ */
+const DANGEROUS_TAGS = [
+  "script",
+  "style",
+  "iframe",
+  "object",
+  "embed",
+  "form",
+  "meta",
+  "link",
+  "base",
+  "applet",
+];
+
+export function sanitizeEmailHtml(html: string): string {
+  if (typeof window === "undefined" || typeof DOMParser === "undefined") {
+    return html;
+  }
+  const doc = new DOMParser().parseFromString(html, "text/html");
+
+  // Remove dangerous tags (and their contents)
+  for (const tag of DANGEROUS_TAGS) {
+    doc.querySelectorAll(tag).forEach((el) => el.remove());
+  }
+
+  // Strip on* event handlers + neutralize javascript:/vbscript:/data: URLs
+  const all = doc.querySelectorAll("*");
+  all.forEach((el) => {
+    // remove event-handler attributes
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      const val = (attr.value || "").trim().toLowerCase();
+      if (name.startsWith("on")) {
+        el.removeAttribute(attr.name);
+      } else if (
+        (name === "href" || name === "src" || name === "xlink:href") &&
+        (val.startsWith("javascript:") ||
+          val.startsWith("vbscript:") ||
+          val.startsWith("data:text/html"))
+      ) {
+        el.setAttribute(attr.name, "#");
+      }
+    }
+  });
+
+  return doc.body ? doc.body.innerHTML : html;
+}

@@ -1,10 +1,11 @@
 "use client";
 
-import { Paperclip, Clock } from "lucide-react";
+import { Paperclip, Clock, Archive, Trash2, MailOpen, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StarButton } from "@/components/mail/star-button";
+import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import type { Email } from "@/lib/types";
 import {
   getInitials,
@@ -20,6 +21,11 @@ interface EmailRowProps {
   active: boolean;
   onSelect: () => void;
   onOpen: () => void;
+  onArchive?: () => void;
+  onDelete?: () => void;
+  onToggleRead?: () => void;
+  onSnooze?: (untilISO: string) => void;
+  onUnsnooze?: () => void;
 }
 
 export function EmailRow({
@@ -28,11 +34,18 @@ export function EmailRow({
   active,
   onSelect,
   onOpen,
+  onArchive,
+  onDelete,
+  onToggleRead,
+  onSnooze,
+  onUnsnooze,
 }: EmailRowProps) {
   const unread = !email.isRead;
   const labels = email.labels
     ? email.labels.split(",").map((l) => l.trim()).filter(Boolean)
     : [];
+  const isSnoozed = !!email.snoozedUntil && new Date(email.snoozedUntil) > new Date();
+  const hasHoverActions = !!(onArchive || onDelete || onToggleRead || onSnooze);
 
   return (
     <li
@@ -73,7 +86,7 @@ export function EmailRow({
       <Avatar className="mt-0.5 h-9 w-9 flex-shrink-0">
         <AvatarFallback
           className={cn(
-            "text-xs font-semibold text-white",
+            "text-xs font-semibold text-cream",
             getAvatarColor(email.fromEmail || email.fromName)
           )}
         >
@@ -91,24 +104,65 @@ export function EmailRow({
           >
             {email.fromName}
           </span>
-          <span className="ml-auto flex flex-shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-            {email.snoozedUntil && new Date(email.snoozedUntil) > new Date() ? (
+          <span className="relative ml-auto flex flex-shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+            {/* time — hidden on hover when actions are available */}
+            {isSnoozed ? (
               <span
-                className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-                title={`Snoozed until ${formatSnoozeUntil(email.snoozedUntil)}`}
+                className={cn(
+                  "inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary",
+                  hasHoverActions && "group-hover:opacity-0"
+                )}
+                title={`Snoozed until ${formatSnoozeUntil(email.snoozedUntil!)}`}
               >
                 <Clock className="h-2.5 w-2.5" />
-                {formatSnoozeUntil(email.snoozedUntil).split(",")[0]}
+                {formatSnoozeUntil(email.snoozedUntil!).split(",")[0]}
               </span>
             ) : (
-              <>
+              <span className={cn("inline-flex items-center gap-1", hasHoverActions && "group-hover:opacity-0")}>
                 {email.hasAttachment && (
                   <Paperclip className="h-3 w-3" aria-label="Attachment" />
                 )}
                 {formatEmailTime(email.date)}
-              </>
+              </span>
             )}
           </span>
+
+          {/* Hover action buttons — overlay the time on hover */}
+          {hasHoverActions && (
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-full bg-background/95 px-1 py-0.5 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+              {onArchive && (
+                <RowActionBtn label="Archive" onClick={onArchive}>
+                  <Archive className="h-3.5 w-3.5" />
+                </RowActionBtn>
+              )}
+              {onDelete && (
+                <RowActionBtn label="Delete" onClick={onDelete} danger>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </RowActionBtn>
+              )}
+              {onToggleRead && (
+                <RowActionBtn
+                  label={unread ? "Mark as read" : "Mark as unread"}
+                  onClick={onToggleRead}
+                >
+                  {unread ? (
+                    <MailOpen className="h-3.5 w-3.5" />
+                  ) : (
+                    <Mail className="h-3.5 w-3.5" />
+                  )}
+                </RowActionBtn>
+              )}
+              {onSnooze && (
+                <SnoozeMenu
+                  onSnooze={onSnooze}
+                  onUnsnooze={onUnsnooze}
+                  isSnoozed={isSnoozed}
+                  snoozedUntil={email.snoozedUntil}
+                  size="sm"
+                />
+              )}
+            </div>
+          )}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">
           {email.isImportant && (
@@ -149,6 +203,36 @@ export function EmailRow({
         )}
       </div>
     </li>
+  );
+}
+
+function RowActionBtn({
+  label,
+  onClick,
+  danger,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        danger && "hover:text-destructive"
+      )}
+      aria-label={label}
+      title={label}
+    >
+      {children}
+    </button>
   );
 }
 

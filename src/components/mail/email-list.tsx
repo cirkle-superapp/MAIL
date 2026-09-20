@@ -27,6 +27,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { EmailRow } from "@/components/mail/email-row";
 import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { LabelMenu } from "@/components/mail/label-menu";
@@ -58,9 +68,30 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
   const searchQuery = useMailStore((s) => s.searchQuery);
   const selectedEmailId = useMailStore((s) => s.selectedEmailId);
   const setSelectedEmailId = useMailStore((s) => s.setSelectedEmailId);
+  const openEditDraft = useMailStore((s) => s.openEditDraft);
   const { data, isLoading, isError, refetch, isFetching } = useEmailList();
   const invalidate = useInvalidateMail();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [emptyConfirmOpen, setEmptyConfirmOpen] = useState(false);
+
+  async function handleEmptyFolder() {
+    try {
+      await Promise.all(
+        emails.map((e) =>
+          fetch(`/api/emails/${e.id}`, { method: "DELETE" })
+        )
+      );
+      setSelected(new Set());
+      setEmptyConfirmOpen(false);
+      invalidate();
+      toast({
+        title: `${folder === "TRASH" ? "Trash" : "Spam"} emptied`,
+        duration: 1500,
+      });
+    } catch {
+      toast({ title: "Could not empty folder", variant: "destructive" });
+    }
+  }
 
   const emails: Email[] = useMemo(() => data?.emails ?? [], [data]);
   const meta = FOLDER_META[folder];
@@ -198,6 +229,46 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
     await bulkUpdate({ isRead }, `Marked ${isRead ? "read" : "unread"}`);
   }
 
+  // Single-email row actions (with undo for archive/delete/snooze)
+  function singlePatch(id: string, payload: Record<string, unknown>) {
+    return fetch(`/api/emails/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((res) => {
+      if (!res.ok) throw new Error("Failed");
+      invalidate();
+    });
+  }
+
+  function rowArchive(email: Email) {
+    const prev = email.folder;
+    singlePatch(email.id, { folder: "ARCHIVE" })
+      .then(() => showUndoToast("Archived", () => singlePatch(email.id, { folder: prev })))
+      .catch(() => toast({ title: "Action failed", variant: "destructive" }));
+  }
+  function rowDelete(email: Email) {
+    const prev = email.folder;
+    singlePatch(email.id, { folder: "TRASH" })
+      .then(() => showUndoToast("Moved to Trash", () => singlePatch(email.id, { folder: prev })))
+      .catch(() => toast({ title: "Action failed", variant: "destructive" }));
+  }
+  function rowToggleRead(email: Email) {
+    singlePatch(email.id, { isRead: !email.isRead }).catch(() =>
+      toast({ title: "Action failed", variant: "destructive" })
+    );
+  }
+  function rowSnooze(email: Email, iso: string) {
+    singlePatch(email.id, { snoozedUntil: iso })
+      .then(() => showUndoToast("Snoozed", () => singlePatch(email.id, { snoozedUntil: null })))
+      .catch(() => toast({ title: "Action failed", variant: "destructive" }));
+  }
+  function rowUnsnooze(email: Email) {
+    singlePatch(email.id, { snoozedUntil: null }).catch(() =>
+      toast({ title: "Action failed", variant: "destructive" })
+    );
+  }
+
   const title = searchQuery
     ? `Results for "${searchQuery}"`
     : selectedLabel
@@ -263,6 +334,17 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
             <span className="text-xs text-muted-foreground">
               {emails.length > 0 && `${emails.length} ${emails.length === 1 ? "message" : "messages"}`}
             </span>
+            {(folder === "TRASH" || folder === "SPAM") && emails.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-2 h-8 gap-1 text-xs text-muted-foreground hover:text-destructive"
+                onClick={() => setEmptyConfirmOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Empty {folder === "TRASH" ? "trash" : "spam"} now
+              </Button>
+            )}
             <div className="ml-auto flex items-center gap-1">
               <TooltipProvider delayDuration={400}>
                 <Tooltip>
@@ -316,12 +398,47 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
             activeId={selectedEmailId}
             onToggleSelect={toggleSelect}
             onOpen={(id) => {
-              setSelectedEmailId(id);
-              onOpenEmail(id);
+              const target = emails.find((e) => e.id === id);
+              if (target && target.folder === "DRAFTS") {
+                openEditDraft(id);
+              } else {
+                setSelectedEmailId(id);
+                onOpenEmail(id);
+              }
             }}
+            onArchive={rowArchive}
+            onDelete={rowDelete}
+            onToggleRead={rowToggleRead}
+            onSnooze={rowSnooze}
+            onUnsnooze={rowUnsnooze}
           />
         )}
       </div>
+
+      <AlertDialog open={emptyConfirmOpen} onOpenChange={setEmptyConfirmOpen}>
+        <AlertDialogContent className="sm:max-w-[420px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Empty {folder === "TRASH" ? "trash" : "spam"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all {emails.length}{" "}
+              {emails.length === 1 ? "message" : "messages"} in{" "}
+              {folder === "TRASH" ? "your trash" : "your spam"}. This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleEmptyFolder}
+            >
+              Delete forever
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -334,12 +451,22 @@ function DateGroupedEmailList({
   activeId,
   onToggleSelect,
   onOpen,
+  onArchive,
+  onDelete,
+  onToggleRead,
+  onSnooze,
+  onUnsnooze,
 }: {
   emails: Email[];
   selected: Set<string>;
   activeId: string | null;
   onToggleSelect: (id: string) => void;
   onOpen: (id: string) => void;
+  onArchive: (email: Email) => void;
+  onDelete: (email: Email) => void;
+  onToggleRead: (email: Email) => void;
+  onSnooze: (email: Email, iso: string) => void;
+  onUnsnooze: (email: Email) => void;
 }) {
   // Bucket emails preserving the date-desc order from the API
   const groups = new Map<string, Email[]>();
@@ -370,6 +497,11 @@ function DateGroupedEmailList({
                 active={activeId === email.id}
                 onSelect={() => onToggleSelect(email.id)}
                 onOpen={() => onOpen(email.id)}
+                onArchive={() => onArchive(email)}
+                onDelete={() => onDelete(email)}
+                onToggleRead={() => onToggleRead(email)}
+                onSnooze={(iso) => onSnooze(email, iso)}
+                onUnsnooze={() => onUnsnooze(email)}
               />
             ))}
           </ul>

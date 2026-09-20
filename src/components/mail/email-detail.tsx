@@ -43,6 +43,7 @@ import {
   getAvatarColor,
   formatEmailTime,
   formatFullDate,
+  sanitizeEmailHtml,
 } from "@/lib/email-utils";
 import type { Email } from "@/lib/types";
 
@@ -481,7 +482,7 @@ function MessageView({
 
       <div
         className="prose prose-sm max-w-none px-4 pb-4 text-sm leading-relaxed text-foreground/90 sm:px-5 [&_a]:text-accent [&_a:hover]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_table]:border-collapse [&_td]:border [&_td]:border-border/50 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border/50 [&_th]:px-2 [&_th]:py-1"
-        dangerouslySetInnerHTML={{ __html: email.body }}
+        dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.body) }}
       />
 
       {email.hasAttachment && email.attachmentName && (

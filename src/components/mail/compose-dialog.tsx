@@ -17,6 +17,7 @@ import { useMailStore, type ComposeMode } from "@/store/mail-store";
 import { useEmailDetail, useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
+import { showUndoToast } from "@/components/mail/undo-toast";
 import { makeSnippet, textToHtml, formatFullDate } from "@/lib/email-utils";
 import { RichTextEditor } from "@/components/mail/rich-text-editor";
 import { RecipientInput } from "@/components/mail/recipient-input";
@@ -90,6 +91,17 @@ export function ComposeDialog() {
       setAttachmentName(
         sourceEmail.hasAttachment ? sourceEmail.attachmentName : ""
       );
+    } else if (mode === "edit-draft" && sourceEmail) {
+      // Continue editing an existing draft
+      setTo(sourceEmail.toEmails || "");
+      setCc(sourceEmail.ccEmails || "");
+      setBcc(sourceEmail.bccEmails || "");
+      setSubject(sourceEmail.subject || "");
+      setBodyHtml(sourceEmail.body || "");
+      setShowCc(!!sourceEmail.ccEmails || !!sourceEmail.bccEmails);
+      setAttachmentName(
+        sourceEmail.hasAttachment ? sourceEmail.attachmentName : ""
+      );
     } else {
       // New compose
       setTo("");
@@ -151,6 +163,38 @@ export function ComposeDialog() {
         invalidate();
         setSending(false);
         pendingSendRef.current = null;
+        // When sending a draft, delete the original draft record (the sent
+        // copy is now the canonical message).
+        if (mode === "edit-draft" && sourceEmail) {
+          fetch(`/api/emails/${sourceEmail.id}`, { method: "DELETE" })
+            .then(() => invalidate())
+            .catch(() => {});
+        }
+        // Send + archive: when replying, archive the original conversation
+        // (Gmail default) if it's still in the inbox.
+        if (
+          (mode === "reply" || mode === "reply-all") &&
+          sourceEmail &&
+          sourceEmail.folder === "INBOX"
+        ) {
+          const sourceId = sourceEmail.id;
+          fetch(`/api/emails/${sourceId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folder: "ARCHIVE" }),
+          })
+            .then(() => invalidate())
+            .then(() => {
+              showUndoToast("Reply sent · conversation archived", () =>
+                fetch(`/api/emails/${sourceId}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ folder: "INBOX" }),
+                }).then(() => invalidate())
+              );
+            })
+            .catch(() => {});
+        }
         setTimeout(() => closeCompose(), 200);
       })
       .catch((e) => {
@@ -200,6 +244,31 @@ export function ComposeDialog() {
   }
 
   async function handleSaveDraft() {
+    // When editing an existing draft, PATCH it in place; otherwise create a new one.
+    if (mode === "edit-draft" && sourceEmail) {
+      try {
+        const res = await fetch(`/api/emails/${sourceEmail.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            toEmails: to,
+            ccEmails: cc,
+            bccEmails: bcc,
+            subject: subject || "(no subject)",
+            body: bodyHtml,
+            attachmentName,
+            hasAttachment: !!attachmentName,
+          }),
+        });
+        if (!res.ok) throw new Error("Failed");
+        invalidate();
+        toast({ title: "Draft updated", duration: 1500 });
+        closeCompose();
+      } catch {
+        toast({ title: "Could not save draft", variant: "destructive" });
+      }
+      return;
+    }
     const payload = buildPayload(true);
     try {
       const res = await fetch("/api/emails", {
@@ -213,6 +282,18 @@ export function ComposeDialog() {
       closeCompose();
     } catch {
       toast({ title: "Could not save draft", variant: "destructive" });
+    }
+  }
+
+  async function handleDeleteDraft() {
+    if (!sourceEmail) return;
+    try {
+      await fetch(`/api/emails/${sourceEmail.id}`, { method: "DELETE" });
+      invalidate();
+      closeCompose();
+      toast({ title: "Draft discarded", duration: 1500 });
+    } catch {
+      toast({ title: "Could not discard draft", variant: "destructive" });
     }
   }
 
@@ -230,6 +311,8 @@ export function ComposeDialog() {
       ? `Reply all: ${subject || "(no subject)"}`
       : mode === "forward"
       ? `Forward: ${subject || "(no subject)"}`
+      : mode === "edit-draft"
+      ? `Draft: ${subject || "(no subject)"}`
       : subject || "New message";
 
   return (
@@ -384,9 +467,21 @@ export function ComposeDialog() {
               variant="ghost"
               size="icon"
               className="ml-auto h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={handleDiscard}
-              aria-label="Discard"
-              title="Discard"
+              onClick={
+                mode === "edit-draft" && sourceEmail
+                  ? handleDeleteDraft
+                  : handleDiscard
+              }
+              aria-label={
+                mode === "edit-draft" && sourceEmail
+                  ? "Discard draft"
+                  : "Discard"
+              }
+              title={
+                mode === "edit-draft" && sourceEmail
+                  ? "Discard draft (delete)"
+                  : "Discard"
+              }
             >
               <Trash2 className="h-4 w-4" />
             </Button>

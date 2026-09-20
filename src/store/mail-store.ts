@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { Folder } from "@/lib/types";
 
 export type SpecialView = "STARRED" | "IMPORTANT" | "SNOOZED";
-export type ComposeMode = "new" | "reply" | "reply-all" | "forward";
+export type ComposeMode = "new" | "reply" | "reply-all" | "forward" | "edit-draft";
 
 export interface MailState {
   folder: Folder | SpecialView;
@@ -25,6 +25,7 @@ export interface MailState {
   openReply: (emailId: string) => void;
   openReplyAll: (emailId: string) => void;
   openForward: (emailId: string) => void;
+  openEditDraft: (emailId: string) => void;
   closeCompose: () => void;
 }
 
@@ -56,6 +57,8 @@ export const useMailStore = create<MailState>((set) => ({
     set({ composeOpen: true, composeMode: "reply-all", composeEmailId: emailId }),
   openForward: (emailId) =>
     set({ composeOpen: true, composeMode: "forward", composeEmailId: emailId }),
+  openEditDraft: (emailId) =>
+    set({ composeOpen: true, composeMode: "edit-draft", composeEmailId: emailId }),
   closeCompose: () =>
     set({ composeOpen: false, composeMode: "new", composeEmailId: null }),
 }));
