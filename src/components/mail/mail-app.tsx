@@ -6,30 +6,34 @@ import { Sidebar } from "@/components/mail/sidebar";
 import { EmailList } from "@/components/mail/email-list";
 import { EmailDetail } from "@/components/mail/email-detail";
 import { ComposeDialog } from "@/components/mail/compose-dialog";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useMailStore } from "@/store/mail-store";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { cn } from "@/lib/utils";
 
 export function MailApp() {
+  const isMobile = useIsMobile();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const selectedEmailId = useMailStore((s) => s.selectedEmailId);
   const setSelectedEmailId = useMailStore((s) => s.setSelectedEmailId);
   const composeOpen = useMailStore((s) => s.composeOpen);
 
-  // Auto-collapsing sidebar on small screens
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handler = () => {
-      if (window.innerWidth < 768) {
-        setSidebarCollapsed(true);
-      }
-    };
-    handler();
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, []);
+  // Keyboard shortcuts ("/" dispatches a focus-search event the TopBar listens for)
+  useKeyboardShortcuts(() =>
+    window.dispatchEvent(new Event("cirkle:focus-search"))
+  );
 
-  // On mobile, an open email shows the detail pane; on desktop both are visible.
   const showDetail = !!selectedEmailId;
+
+  function handleToggleSidebar() {
+    if (isMobile) {
+      setMobileSidebarOpen((v) => !v);
+    } else {
+      setSidebarCollapsed((v) => !v);
+    }
+  }
 
   function backToList() {
     setSelectedEmailId(null);
@@ -38,12 +42,29 @@ export function MailApp() {
   return (
     <div className="flex h-screen flex-col bg-background">
       <TopBar
-        onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-        sidebarOpen={!sidebarCollapsed}
+        onToggleSidebar={handleToggleSidebar}
+        sidebarOpen={isMobile ? mobileSidebarOpen : !sidebarCollapsed}
       />
 
       <div className="flex min-h-0 flex-1">
-        <Sidebar collapsed={sidebarCollapsed} />
+        {/* Desktop push sidebar */}
+        {!isMobile && <Sidebar collapsed={sidebarCollapsed} />}
+
+        {/* Mobile sidebar drawer */}
+        {isMobile && (
+          <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+            <SheetContent
+              side="left"
+              className="w-72 p-0 sm:w-72"
+              onCloseAutoFocus={(e) => e.preventDefault()}
+            >
+              <SheetTitle className="sr-only">Navigation</SheetTitle>
+              <div className="h-full" onClick={() => setMobileSidebarOpen(false)}>
+                <Sidebar collapsed={false} />
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
 
         {/* Middle + Right panes */}
         <div className="flex min-w-0 flex-1">

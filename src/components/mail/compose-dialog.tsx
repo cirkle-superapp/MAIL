@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   X,
   Minus,
@@ -9,32 +9,39 @@ import {
   Send,
   ChevronDown,
   Trash2,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { useMailStore } from "@/store/mail-store";
 import { useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
-import { makeSnippet, textToHtml } from "@/lib/email-utils";
+import { ToastAction } from "@/components/ui/toast";
+import { makeSnippet, textToHtml, formatFullDate } from "@/lib/email-utils";
 import type { Email } from "@/lib/types";
+import { RichTextEditor } from "@/components/mail/rich-text-editor";
+import { RecipientInput } from "@/components/mail/recipient-input";
 
 interface ComposeDialogProps {
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
   replyToEmail?: Email | null;
+  forwardEmail?: Email | null;
 }
 
 type WindowState = "normal" | "minimized" | "maximized";
+type ComposeMode = "new" | "reply" | "forward";
+
+const UNDO_WINDOW_MS = 5000;
 
 export function ComposeDialog({
   open: openProp,
   onOpenChange: onOpenChangeProp,
   replyToEmail,
+  forwardEmail,
 }: ComposeDialogProps) {
   const storeOpen = useMailStore((s) => s.composeOpen);
-  const storeReplyTo = useMailStore((s) => s.composeReplyTo);
   const closeStore = useMailStore((s) => s.closeCompose);
   const invalidate = useInvalidateMail();
 
@@ -44,123 +51,181 @@ export function ComposeDialog({
     if (!v) closeStore();
   };
 
-  // Reply target: either explicit prop (from detail page) or from store (sidebar compose with reply)
-  const replyTarget = replyToEmail ?? null;
-  const isReply = !!replyTarget || storeReplyTo !== null;
+  const mode: ComposeMode = forwardEmail ? "forward" : replyToEmail ? "reply" : "new";
+  const sourceEmail = forwardEmail ?? replyToEmail ?? null;
 
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
   const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [bodyHtml, setBodyHtml] = useState("");
   const [attachmentName, setAttachmentName] = useState("");
   const [showCc, setShowCc] = useState(false);
   const [windowState, setWindowState] = useState<WindowState>("normal");
   const [sending, setSending] = useState(false);
+  const [editorKey, setEditorKey] = useState(0);
 
-  // Pre-fill on open
+  const pendingSendRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Pre-fill on open or when the source/mode changes
   useEffect(() => {
     if (!open) return;
-    if (replyTarget) {
-      // Reply
-      setTo(replyTarget.fromEmail);
-      setCc(replyTarget.ccEmails || "");
+    if (mode === "reply" && sourceEmail) {
+      setTo(sourceEmail.fromEmail);
+      setCc(sourceEmail.ccEmails || "");
       setBcc("");
-      const subj = replyTarget.subject.toLowerCase().startsWith("re:")
-        ? replyTarget.subject
-        : "Re: " + replyTarget.subject;
+      const subj = sourceEmail.subject.toLowerCase().startsWith("re:")
+        ? sourceEmail.subject
+        : "Re: " + sourceEmail.subject;
       setSubject(subj);
-      setBody(
-        `\n\nOn ${new Date(replyTarget.date).toDateString()}, ${replyTarget.fromName} wrote:\n> ${replyTarget.snippet}`
+      setBodyHtml(
+        `<p><br></p><p>On ${formatFullDate(sourceEmail.date)}, ${sourceEmail.fromName} wrote:</p><blockquote style="border-left:2px solid #ccc;padding-left:8px;color:#666;margin:0">${sourceEmail.body}</blockquote>`
       );
-      setShowCc(!!replyTarget.ccEmails);
+      setShowCc(!!sourceEmail.ccEmails);
+    } else if (mode === "forward" && sourceEmail) {
+      setTo("");
+      setCc("");
+      setBcc("");
+      const subj = sourceEmail.subject.toLowerCase().startsWith("fwd:")
+        ? sourceEmail.subject
+        : "Fwd: " + sourceEmail.subject;
+      setSubject(subj);
+      setBodyHtml(
+        `<p><br></p><p>---------- Forwarded message ----------</p><p>From: ${sourceEmail.fromName} &lt;${sourceEmail.fromEmail}&gt;<br>Date: ${formatFullDate(sourceEmail.date)}<br>Subject: ${sourceEmail.subject}</p><br>${sourceEmail.body}`
+      );
+      setShowCc(false);
+      if (sourceEmail.hasAttachment) setAttachmentName(sourceEmail.attachmentName);
     } else {
-      // New compose
       setTo("");
       setCc("");
       setBcc("");
       setSubject("");
-      setBody("");
+      setBodyHtml("");
       setShowCc(false);
     }
-    setAttachmentName("");
+    setAttachmentName((prev) => (mode === "forward" && sourceEmail?.hasAttachment ? sourceEmail.attachmentName : ""));
     setWindowState("normal");
-  }, [open, replyTarget]);
+    setEditorKey((k) => k + 1);
+  }, [open, mode, sourceEmail?.id]);
+
+  // Cleanup any pending send on unmount
+  useEffect(() => {
+    return () => {
+      if (pendingSendRef.current) clearTimeout(pendingSendRef.current);
+    };
+  }, []);
 
   if (!open) return null;
 
-  async function handleSend() {
+  function buildPayload(isDraft = false) {
+    return {
+      to,
+      cc,
+      bcc,
+      subject: subject || "(no subject)",
+      body: bodyHtml,
+      attachmentName,
+      isDraft,
+    };
+  }
+
+  function actuallySend(payload: ReturnType<typeof buildPayload>) {
+    setSending(true);
+    fetch("/api/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Send failed");
+        }
+        invalidate();
+        setSending(false);
+        pendingSendRef.current = null;
+        // keep the "sent" toast visible briefly then close
+        setTimeout(() => setOpen(false), 200);
+      })
+      .catch((e) => {
+        setSending(false);
+        pendingSendRef.current = null;
+        toast({
+          title: "Could not send",
+          description: e instanceof Error ? e.message : undefined,
+          variant: "destructive",
+        });
+      });
+  }
+
+  function handleSend() {
     if (!to.trim()) {
       toast({ title: "Please add a recipient", variant: "destructive" });
       return;
     }
     setSending(true);
-    try {
-      const payload: Record<string, unknown> = {
-        to,
-        cc,
-        bcc,
-        subject: subject || "(no subject)",
-        body,
-        attachmentName,
-      };
-      const isPutReply = isReply && replyTarget;
-      const url = isPutReply ? `/api/emails/${replyTarget!.id}` : "/api/emails";
-      const method = isPutReply ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Send failed");
-      }
-      const data = await res.json();
-      // If this is a draft, also remove from drafts? For now, just send.
-      void makeSnippet(body);
-      void textToHtml(body);
-      invalidate();
-      toast({ title: isReply ? "Reply sent" : "Message sent", duration: 2000 });
-      setOpen(false);
-      return data;
-    } catch (e) {
-      toast({
-        title: "Could not send",
-        description: e instanceof Error ? e.message : undefined,
-        variant: "destructive",
-      });
-    } finally {
-      setSending(false);
+    const payload = buildPayload(false);
+
+    // "Sending…" toast briefly
+    toast({ title: "Sending…", duration: 1200 });
+
+    // Hold the actual send for the undo window
+    pendingSendRef.current = setTimeout(() => {
+      actuallySend(payload);
+    }, UNDO_WINDOW_MS);
+
+    // Show the undo-able toast
+    toast({
+      title: "Message sent",
+      description: "Undo available for 5s",
+      duration: UNDO_WINDOW_MS,
+      action: (
+        <ToastAction altText="Undo send" onClick={handleUndo}>
+          Undo
+        </ToastAction>
+      ),
+    });
+
+    // Visually close the compose window while the undo window runs
+    setWindowState("minimized");
+  }
+
+  function handleUndo() {
+    if (pendingSendRef.current) {
+      clearTimeout(pendingSendRef.current);
+      pendingSendRef.current = null;
     }
+    setSending(false);
+    setWindowState("normal");
+    invalidate();
+    toast({ title: "Send cancelled", duration: 1500 });
   }
 
   async function handleSaveDraft() {
-    if (!to.trim() && !subject.trim() && !body.trim()) {
-      setOpen(false);
-      return;
-    }
+    const payload = buildPayload(true);
     try {
       const res = await fetch("/api/emails", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to,
-          cc,
-          bcc,
-          subject: subject || "(no subject)",
-          body,
-          attachmentName,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("Failed");
-      toast({ title: "Saved as draft (sent)", duration: 1500 });
-      setOpen(false);
       invalidate();
+      toast({ title: "Draft saved", duration: 1500 });
+      setOpen(false);
     } catch {
       toast({ title: "Could not save draft", variant: "destructive" });
     }
   }
+
+  function handleDiscard() {
+    setOpen(false);
+    if (!to && !subject && !bodyHtml) return;
+    // Silent discard — no DB write
+  }
+
+  void makeSnippet(bodyHtml);
+  void textToHtml(bodyHtml);
 
   return (
     <div
@@ -170,23 +235,26 @@ export function ComposeDialog({
           ? "bottom-0 right-4 h-10 w-72 sm:w-96"
           : windowState === "maximized"
           ? "inset-2 sm:inset-4"
-          : "bottom-0 right-4 h-[28rem] w-[min(32rem,calc(100vw-2rem))] sm:right-6"
+          : "bottom-0 right-4 h-[34rem] w-[min(34rem,calc(100vw-2rem))] sm:right-6"
       )}
       role="dialog"
       aria-label="Compose email"
     >
       {/* Title bar */}
       <div
-        className="flex h-10 flex-shrink-0 cursor-default items-center gap-2 rounded-t-xl bg-foreground/5 px-3 text-foreground"
-        onClick={() =>
-          windowState === "minimized" && setWindowState("normal")
-        }
+        className="flex h-10 flex-shrink-0 cursor-default items-center gap-2 rounded-t-xl bg-muted/60 px-3 text-foreground"
+        onClick={() => windowState === "minimized" && setWindowState("normal")}
       >
         <span className="flex-1 truncate text-xs font-medium">
-          {isReply
-            ? subject || "Reply"
+          {mode === "reply"
+            ? `Reply: ${subject || "(no subject)"}`
+            : mode === "forward"
+            ? `Forward: ${subject || "(no subject)"}`
             : subject || "New message"}
         </span>
+        {sending && (
+          <span className="text-[10px] text-muted-foreground">sending…</span>
+        )}
         {windowState !== "minimized" && (
           <button
             onClick={() => setWindowState("minimized")}
@@ -206,7 +274,7 @@ export function ComposeDialog({
           <Maximize2 className="h-3.5 w-3.5" />
         </button>
         <button
-          onClick={() => setOpen(false)}
+          onClick={handleDiscard}
           className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
           aria-label="Close"
         >
@@ -215,45 +283,34 @@ export function ComposeDialog({
       </div>
 
       {windowState !== "minimized" && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-border">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-border">
           <div className="flex flex-col divide-y divide-border">
-            <div className="flex items-center px-3">
-              <Input
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                placeholder="To"
-                className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-                aria-label="Recipients"
-              />
-              {!showCc && (
-                <button
-                  onClick={() => setShowCc(true)}
-                  className="ml-2 flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-                >
-                  Cc/Bcc <ChevronDown className="h-3 w-3" />
-                </button>
-              )}
-            </div>
+            <RecipientInput
+              value={to}
+              onChange={setTo}
+              placeholder="To"
+              ariaLabel="Recipients"
+              showToggle={!showCc}
+              onToggle={() => setShowCc(true)}
+              toggleLabel="Cc/Bcc"
+              className="px-3"
+            />
             {showCc && (
               <>
-                <div className="flex items-center px-3">
-                  <Input
-                    value={cc}
-                    onChange={(e) => setCc(e.target.value)}
-                    placeholder="Cc"
-                    className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-                    aria-label="Cc"
-                  />
-                </div>
-                <div className="flex items-center px-3">
-                  <Input
-                    value={bcc}
-                    onChange={(e) => setBcc(e.target.value)}
-                    placeholder="Bcc"
-                    className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-                    aria-label="Bcc"
-                  />
-                </div>
+                <RecipientInput
+                  value={cc}
+                  onChange={setCc}
+                  placeholder="Cc"
+                  ariaLabel="Cc"
+                  className="px-3"
+                />
+                <RecipientInput
+                  value={bcc}
+                  onChange={setBcc}
+                  placeholder="Bcc"
+                  ariaLabel="Bcc"
+                  className="px-3"
+                />
               </>
             )}
             <div className="flex items-center px-3">
@@ -267,15 +324,14 @@ export function ComposeDialog({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1">
-            <Textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write your message…"
-              className="h-full min-h-[8rem] resize-none border-0 px-3 py-2 text-sm shadow-none focus-visible:ring-0"
-              aria-label="Message body"
-            />
-          </div>
+          <RichTextEditor
+            key={editorKey}
+            initialHtml={bodyHtml}
+            onChange={setBodyHtml}
+            onSendShortcut={handleSend}
+            placeholder="Write your message… (Cmd/Ctrl+Enter to send)"
+            className="min-h-0"
+          />
 
           {attachmentName && (
             <div className="mx-3 mb-2 inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs">
@@ -317,10 +373,20 @@ export function ComposeDialog({
             </Button>
             <Button
               variant="ghost"
+              size="sm"
+              className="ml-1 h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={handleSaveDraft}
+              aria-label="Save as draft"
+              title="Save as draft"
+            >
+              <Save className="h-3.5 w-3.5" /> Save draft
+            </Button>
+            <Button
+              variant="ghost"
               size="icon"
               className="ml-auto h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={handleSaveDraft}
-              aria-label="Discard draft"
+              onClick={handleDiscard}
+              aria-label="Discard"
               title="Discard"
             >
               <Trash2 className="h-4 w-4" />

@@ -29,12 +29,14 @@ model Email {
   labels       String   @default("")
   hasAttachment Boolean  @default(false)
   attachmentName String @default("")
+  snoozedUntil  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([folder])
   @@index([threadId])
   @@index([isStarred])
+  @@index([snoozedUntil])
 }
 
 model Label {

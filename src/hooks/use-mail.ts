@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Email, Label, Folder } from "@/lib/types";
+import type { Email, Label, Folder, Contact } from "@/lib/types";
 import type { MailState } from "@/store/mail-store";
 import { useMailStore } from "@/store/mail-store";
 
@@ -21,6 +21,7 @@ export function buildListQuery(state: Pick<MailState, "folder" | "selectedLabel"
   }
   if (state.folder === "STARRED") params.set("starred", "true");
   else if (state.folder === "IMPORTANT") params.set("important", "true");
+  else if (state.folder === "SNOOZED") params.set("snoozed", "true");
   else params.set("folder", state.folder);
   if (state.selectedLabel) params.set("label", state.selectedLabel);
   return `/api/emails?${params.toString()}`;
@@ -56,6 +57,14 @@ export function useLabels() {
   return useQuery({
     queryKey: ["labels"],
     queryFn: () => fetchJson<{ labels: Label[] }>("/api/labels"),
+    staleTime: 30000,
+  });
+}
+
+export function useContacts() {
+  return useQuery({
+    queryKey: ["contacts"],
+    queryFn: () => fetchJson<{ contacts: Contact[] }>("/api/contacts"),
     staleTime: 30000,
   });
 }

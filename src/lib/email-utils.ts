@@ -93,3 +93,62 @@ export function linkify(text: string): string {
 export function textToHtml(text: string): string {
   return linkify(escapeHtml(text)).replace(/\n/g, "<br/>");
 }
+
+export type SnoozePreset = {
+  key: string;
+  label: string;
+  when: (now: Date) => Date;
+};
+
+export const SNOOZE_PRESETS: SnoozePreset[] = [
+  {
+    key: "later-today",
+    label: "Later today",
+    when: (now) => new Date(now.getTime() + 4 * 60 * 60 * 1000),
+  },
+  {
+    key: "tomorrow",
+    label: "Tomorrow",
+    when: (now) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 1);
+      d.setHours(9, 0, 0, 0);
+      return d;
+    },
+  },
+  {
+    key: "next-week",
+    label: "Next week",
+    when: (now) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 7);
+      d.setHours(9, 0, 0, 0);
+      return d;
+    },
+  },
+  {
+    key: "weekend",
+    label: "This weekend",
+    when: (now) => {
+      const d = new Date(now);
+      const day = d.getDay(); // 0 Sun .. 6 Sat
+      const daysToSat = (6 - day + 7) % 7 || 7;
+      d.setDate(d.getDate() + daysToSat);
+      d.setHours(10, 0, 0, 0);
+      return d;
+    },
+  },
+];
+
+export function formatSnoozeUntil(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const isTomorrow = d.toDateString() === tomorrow.toDateString();
+  const time = format(d, "h:mm a");
+  if (sameDay) return `Today, ${time}`;
+  if (isTomorrow) return `Tomorrow, ${time}`;
+  return format(d, "EEE, MMM d, h:mm a");
+}

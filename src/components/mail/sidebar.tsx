@@ -14,6 +14,7 @@ import {
   Pencil,
   ChevronDown,
   AlertCircle,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,7 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { key: "INBOX", label: "Inbox", icon: Inbox },
   { key: "STARRED", label: "Starred", icon: Star },
+  { key: "SNOOZED", label: "Snoozed", icon: Clock },
   { key: "IMPORTANT", label: "Important", icon: AlertCircle },
   { key: "SENT", label: "Sent", icon: Send },
   { key: "DRAFTS", label: "Drafts", icon: FileText },

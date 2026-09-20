@@ -87,3 +87,60 @@ Stage Summary:
 - App fully rebranded to **Cirkle Mail** with the exact animated three-ring logo (gold→rose→teal gradient, 360°/30s rotation) and the full CIRKLE-SUPERAPP premium design system (gold + deep teal + cream/charcoal, Fraunces serif, aurora + glass, theme-aware primary).
 - No secrets were written to any project file; all credentials were used transiently.
 - SECURITY: user-shared GitHub PAT, Vercel token, Neon DB password, Inngest key, and Turso token are now exposed in plaintext and must be rotated.
+
+---
+Task ID: U1-U9
+Agent: main (Z.ai Code)
+Task: Implement, upgrade, and fix Cirkle Mail — major feature expansion
+
+Work Log:
+Backend:
+- Added `snoozedUntil DateTime?` to Email schema + index; ran `prisma db push` + `db:generate` (regenerated client — a stale client had caused a 500 on the inbox query, fixed by restarting the dev server).
+- `GET /api/emails` now supports `?snoozed=true`; hides actively-snoozed emails from Inbox/Starred/Important/labels via a compound `AND: [{OR:[{snoozedUntil:null},{snoozedUntil:{lte:now}}]}]` so expired snoozes reappear naturally.
+- `POST /api/emails` now accepts `isDraft:true` → saves to DRAFTS folder (no recipient required) instead of sending; `PATCH` (bulk) + `[id]` PATCH both accept `snoozedUntil` (ISO string to set, null to clear).
+- `GET /api/emails/stats` returns `counts.SNOOZED` (future-dated snoozes) and excludes snoozed emails from STARRED/IMPORTANT counts.
+- New `GET /api/contacts` endpoint — distinct senders/recipients for compose autocomplete (derives a name from the local-part when only an address is known).
+
+New components:
+- `rich-text-editor.tsx` — contentEditable + execCommand editor with toolbar (Bold/Italic/Underline/Bullet list/Numbered list/Quote/Insert link/Clear formatting), CSS placeholder via `[data-empty]`, Cmd/Ctrl+Enter send shortcut. Uncontrolled (mount-only init) to avoid caret jumps.
+- `recipient-input.tsx` — combobox with dropdown of matching contacts, keyboard nav (↑/↓/Enter/Esc), avatar chips, replaces the last partial token on selection.
+- `snooze-menu.tsx` — DropdownMenu of presets (Later today / Tomorrow / Next week / This weekend) with computed times + "Cancel snooze" when already snoozed. Fixed nested-asChild pointer bug by dropping the Tooltip wrapper (title attr instead).
+
+Compose dialog rewrite:
+- Three modes: new / reply / forward (derived from `forwardEmail`/`replyToEmail` props). Forward pre-fills `Fwd:` subject, quoted forwarded-message header, empty To; Reply pre-fills `Re:` + quoted original. RichTextEditor replaces the textarea (remounts via `editorKey` on mode/open change).
+- Real draft saving: "Save draft" POSTs with `isDraft:true` → DRAFTS folder. Discard just closes.
+- Undo-send: 5s client-side hold window before the actual POST; shows a toast with a `ToastAction` "Undo" button; clicking Undo clears the timeout and restores the compose (minimized during the window).
+- Recipient autocomplete on To/Cc/Bcc via RecipientInput.
+
+Email detail:
+- Auto mark-as-read: a `useEffect([email?.id])` PATCHes `isRead:true` when an unread email loads (verified: Inbox unread 3→2 after opening one).
+- SnoozeMenu in the action toolbar + a dedicated `snooze()`/`unsnooze()` handler.
+- Forward properly wired: the inline per-message Forward button now calls `onForward` (was incorrectly calling `onReply`); bottom Reply + Forward buttons.
+
+Email list / rows:
+- SnoozeMenu added to the bulk action toolbar (bulk snooze/unsnooze).
+- EmailRow shows a "Snoozed until [day]" chip (Clock icon) instead of the regular time when snoozed.
+- "Snoozed" folder added to the sidebar + FOLDER_META + EmptyState.
+
+Keyboard shortcuts (`use-keyboard-shortcuts.ts`):
+- j/k (↓/↑) move selection + open the email; e archives; # trashes; s toggles star (fetches current state then flips); c composes; / focuses search (dispatches a `cirkle:focus-search` event the TopBar listens for); Esc closes compose or returns to list. Refs hold the live list/selection/compose state so the listener binds once. Ignored while typing in inputs/contentEditable.
+
+Mobile sidebar drawer:
+- `useIsMobile` drives a `Sheet` overlay (left side) for the sidebar on <768px; the desktop push Sidebar isn't rendered on mobile. Selecting a folder closes the drawer.
+
+Verification (agent-browser), all passing:
+- Inbox renders (Cirkle Team email visible, Inbox 3 unread).
+- Rich text toolbar: Bold/Italic/Underline/Bullet/Numbered/Insert link/Clear formatting + Recipients/Subject/Message body/Send.
+- Undo-send: filled + sent → toast "Message sent" with Undo → eval-clicked Undo → compose restored (send cancelled).
+- Auto-read: opened unread Cirkle Team email → back to inbox → count dropped 3→2.
+- Snooze: opened Priya → Snooze → Tomorrow → email left Inbox → "Snoozed 1" folder → opening it shows Priya with "Tomorrow" badge.
+- Forward: clicked outline Forward → subject "Fwd: Your August invoice…", empty To, body contains "Forwarded message".
+- Recipient autocomplete: typed "mar" → filtered to 1 suggestion (Marcus).
+- Keyboard shortcuts: c opens compose ("New message"); / focuses search (activeElement aria-label="Search mail"); Escape closes compose/blurs search; j moves down the list and opens the next email.
+- Draft save: "Save draft" → Drafts count 1→2, "My saved draft" appears in Drafts folder.
+- Mobile (375×812): push sidebar width 0; menu toggle opens Sheet drawer with Compose/Inbox/Snoozed; selecting Inbox closes the drawer.
+- `bun run lint` clean (0 errors, 0 warnings) after fixing: stale Prisma client, missing `Clock` import, setState-in-effect (removed), nested-asChild DropdownMenu pointer bug, inline Forward wired to onReply, unused eslint-disable directives.
+
+Stage Summary:
+- Cirkle Mail now has: rich text compose with formatting toolbar, recipient autocomplete, real draft saving, undo-send (5s), forward mode, auto mark-as-read, full snooze system (per-email + bulk + Snoozed folder + row badges), keyboard shortcuts (j/k/e/#/s/c///Esc), and a mobile Sheet drawer sidebar — all on top of the Cirkle gold+teal design system and animated three-ring logo.
+- All features browser-verified end-to-end; lint clean.

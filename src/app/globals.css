@@ -218,6 +218,15 @@
     0% { transform: translateX(-100%); }
     60%, 100% { transform: translateX(200%); }
   }
+  /* Rich text editor placeholder */
+  .rte-surface[data-empty="true"]::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+    display: block;
+    position: absolute;
+  }
+  .rte-surface { position: relative; }
 }
 
 @media (prefers-reduced-motion: reduce) {

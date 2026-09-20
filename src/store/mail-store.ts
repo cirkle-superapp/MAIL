@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Folder } from "@/lib/types";
 
-export type SpecialView = "STARRED" | "IMPORTANT";
+export type SpecialView = "STARRED" | "IMPORTANT" | "SNOOZED";
 
 export interface MailState {
   folder: Folder | SpecialView;

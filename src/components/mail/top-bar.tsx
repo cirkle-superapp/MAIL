@@ -40,6 +40,19 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
     };
   }, [searchInput, setSearchQuery]);
 
+  // Listen for the global "focus-search" event (triggered by the "/" shortcut)
+  useEffect(() => {
+    function onFocusSearch() {
+      const el = document.querySelector<HTMLInputElement>(
+        'input[aria-label="Search mail"]'
+      );
+      el?.focus();
+      el?.select();
+    }
+    window.addEventListener("cirkle:focus-search", onFocusSearch);
+    return () => window.removeEventListener("cirkle:focus-search", onFocusSearch);
+  }, []);
+
   function handleRefresh() {
     invalidate();
     toast({ title: "Inbox refreshed", duration: 1500 });

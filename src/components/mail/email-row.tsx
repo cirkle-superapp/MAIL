@@ -1,6 +1,6 @@
 "use client";
 
-import { Paperclip } from "lucide-react";
+import { Paperclip, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -10,6 +10,7 @@ import {
   getInitials,
   getAvatarColor,
   formatEmailTime,
+  formatSnoozeUntil,
 } from "@/lib/email-utils";
 import { LABEL_COLORS } from "@/lib/types";
 
@@ -91,10 +92,22 @@ export function EmailRow({
             {email.fromName}
           </span>
           <span className="ml-auto flex flex-shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-            {email.hasAttachment && (
-              <Paperclip className="h-3 w-3" aria-label="Attachment" />
+            {email.snoozedUntil && new Date(email.snoozedUntil) > new Date() ? (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                title={`Snoozed until ${formatSnoozeUntil(email.snoozedUntil)}`}
+              >
+                <Clock className="h-2.5 w-2.5" />
+                {formatSnoozeUntil(email.snoozedUntil).split(",")[0]}
+              </span>
+            ) : (
+              <>
+                {email.hasAttachment && (
+                  <Paperclip className="h-3 w-3" aria-label="Attachment" />
+                )}
+                {formatEmailTime(email.date)}
+              </>
             )}
-            {formatEmailTime(email.date)}
           </span>
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">

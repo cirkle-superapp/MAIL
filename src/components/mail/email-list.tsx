@@ -15,6 +15,7 @@ import {
   Archive as ArchiveIcon,
   ShieldAlert,
   MoreVertical,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,17 +28,19 @@ import {
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmailRow } from "@/components/mail/email-row";
+import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { useMailStore } from "@/store/mail-store";
 import { useEmailList, useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
 import { type Email, type Folder } from "@/lib/types";
 
 const FOLDER_META: Record<
-  Folder | "STARRED" | "IMPORTANT",
+  Folder | "STARRED" | "IMPORTANT" | "SNOOZED",
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
   INBOX: { label: "Inbox", icon: InboxIcon },
   STARRED: { label: "Starred", icon: Star },
+  SNOOZED: { label: "Snoozed", icon: Clock },
   IMPORTANT: { label: "Important", icon: AlertCircle },
   SENT: { label: "Sent", icon: Send },
   DRAFTS: { label: "Drafts", icon: FileText },
@@ -140,6 +143,8 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
             }}
             onMarkRead={() => markReadAll(true)}
             onMarkUnread={() => markReadAll(false)}
+            onSnooze={(iso) => bulkUpdate({ snoozedUntil: iso }, "Snoozed")}
+            onUnsnooze={() => bulkUpdate({ snoozedUntil: null }, "Unsnoozed")}
           />
         ) : (
           <div className="flex w-full items-center gap-2">
@@ -230,6 +235,8 @@ function BulkToolbar({
   onDelete,
   onMarkRead,
   onMarkUnread,
+  onSnooze,
+  onUnsnooze,
 }: {
   count: number;
   folder: string;
@@ -238,6 +245,8 @@ function BulkToolbar({
   onDelete: () => void;
   onMarkRead: () => void;
   onMarkUnread: () => void;
+  onSnooze: (iso: string) => void;
+  onUnsnooze: () => void;
 }) {
   return (
     <div className="flex w-full items-center gap-1">
@@ -255,6 +264,7 @@ function BulkToolbar({
           <TooltipContent>Archive</TooltipContent>
         </Tooltip>
       </TooltipProvider>
+      <SnoozeMenu onSnooze={onSnooze} onUnsnooze={onUnsnooze} />
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -327,7 +337,7 @@ function EmptyState({
   folder,
   search,
 }: {
-  folder: Folder | "STARRED" | "IMPORTANT";
+  folder: Folder | "STARRED" | "IMPORTANT" | "SNOOZED";
   search: boolean;
 }) {
   const meta = FOLDER_META[folder];

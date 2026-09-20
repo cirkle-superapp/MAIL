@@ -25,8 +25,14 @@ export interface Email {
   labels: string;
   hasAttachment: boolean;
   attachmentName: string;
+  snoozedUntil: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Contact {
+  name: string;
+  email: string;
 }
 
 export interface Label {

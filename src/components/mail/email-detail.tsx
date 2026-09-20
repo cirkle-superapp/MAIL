@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Archive,
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StarButton } from "@/components/mail/star-button";
+import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { ComposeDialog } from "@/components/mail/compose-dialog";
 import { useMailStore } from "@/store/mail-store";
 import { useEmailDetail, useInvalidateMail } from "@/hooks/use-mail";
@@ -43,6 +44,8 @@ import {
 } from "@/lib/email-utils";
 import type { Email } from "@/lib/types";
 
+type ComposeMode = "none" | "reply" | "forward";
+
 export function EmailDetail({
   onBack,
 }: {
@@ -51,7 +54,28 @@ export function EmailDetail({
   const id = useMailStore((s) => s.selectedEmailId);
   const { data, isLoading } = useEmailDetail(id);
   const invalidate = useInvalidateMail();
-  const [replyOpen, setReplyOpen] = useState(false);
+  const [composeMode, setComposeMode] = useState<ComposeMode>("none");
+
+  const email = data?.email;
+  const thread = data?.thread;
+
+  // Auto mark-as-read when an unread email is opened
+  useEffect(() => {
+    if (!email || email.isRead) return;
+    let cancelled = false;
+    fetch(`/api/emails/${email.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isRead: true }),
+    })
+      .then(() => {
+        if (!cancelled) invalidate();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [email?.id]);
 
   if (isLoading) {
     return (
@@ -67,11 +91,9 @@ export function EmailDetail({
     );
   }
 
-  if (!data?.email) {
+  if (!email) {
     return <EmptyDetail />;
   }
-
-  const { email, thread } = data;
 
   async function patch(payload: Record<string, unknown>, msg: string) {
     if (!email) return;
@@ -108,9 +130,16 @@ export function EmailDetail({
       })
       .catch(() => toast({ title: "Delete failed", variant: "destructive" }));
   }
+  function snooze(untilISO: string) {
+    patch({ snoozedUntil: untilISO }, "Snoozed").then(() => onBack());
+  }
+  function unsnooze() {
+    patch({ snoozedUntil: null }, "Unsnoozed");
+  }
 
   const isTrash = email.folder === "TRASH";
-  const sortedThread = [...thread].sort(
+  const isSnoozed = !!email.snoozedUntil;
+  const sortedThread = [...(thread ?? [])].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
   const isThreaded = sortedThread.length > 1;
@@ -151,13 +180,19 @@ export function EmailDetail({
         <ActionBtn label="Mark unread" onClick={markUnread}>
           <MailOpen className="h-[1.05rem] w-[1.05rem]" />
         </ActionBtn>
-        <ActionBtn label="Reply" onClick={() => setReplyOpen(true)}>
+        <SnoozeMenu
+          onSnooze={snooze}
+          onUnsnooze={unsnooze}
+          isSnoozed={isSnoozed}
+          snoozedUntil={email.snoozedUntil}
+        />
+        <ActionBtn label="Reply" onClick={() => setComposeMode("reply")}>
           <Reply className="h-[1.05rem] w-[1.05rem]" />
         </ActionBtn>
-        <ActionBtn label="Reply all" onClick={() => setReplyOpen(true)}>
+        <ActionBtn label="Reply all" onClick={() => setComposeMode("reply")}>
           <ReplyAll className="h-[1.05rem] w-[1.05rem]" />
         </ActionBtn>
-        <ActionBtn label="Forward" onClick={() => setReplyOpen(true)}>
+        <ActionBtn label="Forward" onClick={() => setComposeMode("forward")}>
           <Forward className="h-[1.05rem] w-[1.05rem]" />
         </ActionBtn>
         <DropdownMenu>
@@ -215,28 +250,37 @@ export function EmailDetail({
                 email={msg}
                 isLast={idx === sortedThread.length - 1}
                 isThreaded={isThreaded}
-                onReply={() => setReplyOpen(true)}
+                onReply={() => setComposeMode("reply")}
+                onForward={() => setComposeMode("forward")}
               />
             ))}
           </div>
         </div>
       </div>
 
-      {/* Reply button (fixed at bottom of pane) */}
-      <div className="border-t border-border bg-background p-3 sm:px-8">
+      {/* Reply/Forward buttons (fixed at bottom of pane) */}
+      <div className="flex items-center gap-2 border-t border-border bg-background p-3 sm:px-8">
         <Button
           variant="outline"
           className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
-          onClick={() => setReplyOpen(true)}
+          onClick={() => setComposeMode("reply")}
         >
           <Reply className="mr-2 h-4 w-4" /> Reply
+        </Button>
+        <Button
+          variant="outline"
+          className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
+          onClick={() => setComposeMode("forward")}
+        >
+          <Forward className="mr-2 h-4 w-4" /> Forward
         </Button>
       </div>
 
       <ComposeDialog
-        open={replyOpen}
-        onOpenChange={setReplyOpen}
-        replyToEmail={email}
+        open={composeMode !== "none"}
+        onOpenChange={(v) => !v && setComposeMode("none")}
+        replyToEmail={composeMode === "reply" ? email : null}
+        forwardEmail={composeMode === "forward" ? email : null}
       />
     </div>
   );
@@ -283,11 +327,13 @@ function MessageView({
   isLast,
   isThreaded,
   onReply,
+  onForward,
 }: {
   email: Email;
   isLast: boolean;
   isThreaded: boolean;
   onReply: () => void;
+  onForward: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const showCollapsed = isThreaded && !isLast;
@@ -394,7 +440,7 @@ function MessageView({
             variant="ghost"
             size="sm"
             className="ml-2 h-8 rounded-full px-4 text-muted-foreground hover:text-foreground"
-            onClick={onReply}
+            onClick={onForward}
           >
             <Forward className="mr-2 h-3.5 w-3.5" /> Forward
           </Button>
