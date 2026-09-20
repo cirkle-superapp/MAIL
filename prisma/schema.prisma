@@ -1,0 +1,46 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Email {
+  id           String   @id @default(cuid())
+  threadId     String
+  fromName     String
+  fromEmail   String
+  toEmails     String
+  ccEmails     String   @default("")
+  bccEmails    String   @default("")
+  subject      String
+  body         String
+  snippet      String
+  date         DateTime
+  isRead       Boolean  @default(false)
+  isStarred    Boolean  @default(false)
+  isImportant  Boolean  @default(false)
+  folder       String   @default("INBOX")
+  labels       String   @default("")
+  hasAttachment Boolean  @default(false)
+  attachmentName String @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([folder])
+  @@index([threadId])
+  @@index([isStarred])
+}
+
+model Label {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("gray")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
