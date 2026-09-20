@@ -144,3 +144,30 @@ Verification (agent-browser), all passing:
 Stage Summary:
 - Cirkle Mail now has: rich text compose with formatting toolbar, recipient autocomplete, real draft saving, undo-send (5s), forward mode, auto mark-as-read, full snooze system (per-email + bulk + Snoozed folder + row badges), keyboard shortcuts (j/k/e/#/s/c///Esc), and a mobile Sheet drawer sidebar — all on top of the Cirkle gold+teal design system and animated three-ring logo.
 - All features browser-verified end-to-end; lint clean.
+
+---
+Task ID: PUSH
+Agent: main (Z.ai Code)
+Task: Push Cirkle Mail to github.com/cirkle-superapp/MAIL
+
+Work Log:
+- Inspected existing git state: local repo already had 4 automated-snapshot commits on `main` with a clean working tree (all Cirkle Mail source + seeded db/custom.db + worklog.md tracked). No secrets in source (scanned for `ghp_`/`vcp_`/`npg_`/`signkey`/JWT tokens — none).
+- `.env` (containing `DATABASE_URL=file:/home/z/my-project/db/custom.db`) was already gitignored via `.env*`. Verified `dev.log`, `server.log`, `node_modules`, `.next/`, `.claude`, `.z-ai-config` are all ignored.
+- Created `.env.example` (portable `DATABASE_URL="file:./db/custom.db"`) and added `!.env.example` to `.gitignore` so new clones can configure the DB.
+- Wrote a comprehensive `README.md` (features, tech stack, setup, project structure, keyboard-shortcut table, design tokens).
+- Committed: "docs: add README and .env.example for the Cirkle Mail push" (bd1ade6).
+- Added clean remote `origin` → `https://github.com/cirkle-superapp/MAIL.git` (no token embedded in config).
+- Remote `main` had a pre-existing "Initial commit" with only a `LICENSE` file (repo auto-init). Fetched and rebased local `main` onto it — clean replay of 5 commits, no conflicts (LICENSE untouched by local commits).
+- Pushed via `git push https://x-access-token:<TOKEN>@github.com/cirkle-superapp/MAIL.git main` — token used transiently in the push URL only, NOT saved to `.git/config`. Result: `32b085c..bd1ade6 main -> main`.
+
+Verification via GitHub API:
+- Repo `cirkle-superapp/MAIL`, default branch `main`, `pushed_at` fresh.
+- Remote HEAD = bd1ade6 (docs commit); full history present.
+- `contents/src/components/mail` returns all 12 mail components (compose-dialog, email-detail, email-list, email-row, mail-app, recipient-input, rich-text-editor, sidebar, snooze-menu, star-button, theme-toggle, top-bar).
+- `git remote get-url origin` = `https://github.com/cirkle-superapp/MAIL.git` (clean, no token).
+
+Stage Summary:
+- Cirkle Mail is now live on GitHub at https://github.com/cirkle-superapp/MAIL (branch `main`).
+- Includes README + .env.example; seeded SQLite DB committed so the app runs immediately on `bun install && bun run dev`.
+- No secrets committed; git remote config has no embedded token.
+- SECURITY: the GitHub PAT, Vercel token, Turso token, Neon password, and Inngest signkey shared in this message are now exposed in plaintext — all must be rotated.
