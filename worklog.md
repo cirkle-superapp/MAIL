@@ -234,3 +234,35 @@ Pushed to GitHub: `git push` to cirkle-superapp/MAIL main → `f394afd..bb10ae4 
 Stage Summary:
 - Cirkle Mail now also has: Gmail-style row hover actions (archive/delete/mark-read/snooze with undo), Empty Trash/Spam with confirmation, a DOM-based HTML sanitizer for safe email-body rendering, a custom-date snooze picker, send+archive-on-reply, and full draft editing (open/edit/save/send/discard) — on top of the existing rich text compose, undo-send, snooze, undo toasts, reply-all, label assignment, keyboard shortcuts, date grouping, and Cirkle design system.
 - All features browser-verified; lint clean; pushed to https://github.com/cirkle-superapp/MAIL.
+
+---
+Task ID: X1-X7
+Agent: main (Z.ai Code)
+Task: Implement outstanding Gmail features — round 4 (inbox tabs, settings, signature, search operators, schedule send) + push
+
+Work Log:
+- Settings store (`src/store/settings-store.ts`): persist-backed Zustand store with density (comfortable/compact), signature, sendAndArchive, inboxTabs (categories/default). `SettingsDialog` component (opened via the gear button → `cirkle:show-settings` event) with radio groups for density + inbox type, a signature textarea, and a send+archive switch.
+- Density applied to EmailRow (compact → py-1.5 vs comfortable py-2.5) via the settings store.
+- Email signature: appended to new compose via `textToHtml("\n\n" + signature)` in the compose prefill (new-mode only).
+- Send+archive: the compose now reads `sendAndArchive` from settings; replying only archives the original when the setting is on (was always-on before).
+- Inbox category tabs: `deriveCategory()` in email-utils (label-first: Newsletter→Promotions, Social→Social, Finance→Updates; then sender/subject regex heuristics). `inboxTab` state in the store (default PRIMARY). EmailList renders a tab bar (All/Primary/Promotions/Social/Updates with live counts + colored dots) when folder=INBOX + settings.inboxTabs=categories + no search/label; filters the list by the selected tab.
+- Gmail-style search operators (server-side parsing in GET /api/emails): `is:unread`, `is:read`, `is:starred`, `is:important`, `has:attachment`, `from:X`, `to:X`, `subject:X`, `label:X`, `in:folder`. Operators become AND clauses; remaining free-text searches across subject/sender/recipient/body/snippet. Quoted phrases supported.
+- Schedule send: new `scheduledFor DateTime?` field + SCHEDULED folder (schema + types + stats + sidebar + email-list FOLDER_META + row CalendarClock chip). POST /api/emails accepts `scheduledFor` → folder=SCHEDULED. New PUT /api/emails delivers due scheduled emails (scheduledFor <= now → SENT) — called on app mount + every 30s in MailApp. Compose "Schedule" button opens a Dialog with a datetime-local input; apply creates the scheduled email + toast "Scheduled · Will send [time]". Past-due scheduled emails auto-deliver on next app load (verified).
+
+Bugs fixed during verification:
+- Stale Prisma client after adding `scheduledFor` → 500 / "Unknown argument scheduledFor". Fixed by restarting the dev server (db:push regenerates the client, but the running process caches the old one).
+- `.gitignore` now excludes a transient `/upload/` artifact dir; set `core.fileMode false` locally so the 100+ file-mode-only flips (644→755) from the sandbox don't pollute commits.
+
+Verification (agent-browser), all passing:
+- Inbox tabs render with counts (Primary 4, Promotions 2, Social 4, Updates 3 = 13); clicking Promotions filters to 2 emails (Weekly Byte + OpenTools), back to Primary shows 4.
+- Search operators: `is:unread`→3 results, `has:attachment`→3 (Priya/Acme/CityTax), `from:priya`→1.
+- Settings dialog opens (gear); set signature "Best regards from Cirkle" → new compose body contains it.
+- Schedule send: filled compose → Schedule → datetime (Sep 25 10am) → Schedule send → toast "Scheduled · Will send Fri, Sep 25, 10:00 AM" → Scheduled folder shows the email with a CalendarClock chip.
+- Scheduled delivery: created a past-due scheduled email (2020-01-01) → reloaded → scheduled count 3→2, sent count +1 ("Deliver me" now in Sent).
+- `bun run lint` clean (0 errors, 0 warnings).
+
+Pushed to GitHub: `bb10ae4..b246658 main -> main` (18 files, 639 insertions). Verified via GitHub API: remote HEAD = b246658. Token used transiently only.
+
+Stage Summary:
+- Cirkle Mail now also has: Gmail-style inbox category tabs (Primary/Promotions/Social/Updates), a full settings dialog (density + signature + send+archive + inbox type), email signatures, compact/comfortable density, Gmail search operators, and schedule send (with a Scheduled folder + simulated auto-delivery) — on top of the existing rich text compose, undo-send, snooze, undo toasts, reply-all, label assignment, row hover actions, draft editing, keyboard shortcuts, date grouping, HTML sanitizer, empty trash/spam, and the Cirkle gold+teal design system with the animated three-ring logo.
+- All features browser-verified; lint clean; pushed to https://github.com/cirkle-superapp/MAIL.
