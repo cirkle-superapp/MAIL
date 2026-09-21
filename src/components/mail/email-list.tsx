@@ -21,6 +21,8 @@ import {
   Reply,
   Hourglass,
   Receipt,
+  Handshake,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -55,7 +57,7 @@ import { type Email, type Folder } from "@/lib/types";
 import { dateBucket, deriveCategory, type Category } from "@/lib/email-utils";
 
 const FOLDER_META: Record<
-  Folder | "STARRED" | "IMPORTANT" | "SNOOZED" | "NOW" | "REPLY" | "WAITING" | "RECEIPTS" | "SUBSCRIPTIONS",
+  Folder | "STARRED" | "IMPORTANT" | "SNOOZED" | "NOW" | "REPLY" | "WAITING" | "RECEIPTS" | "SUBSCRIPTIONS" | "COMMITMENTS" | "PEOPLE",
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
   INBOX: { label: "Inbox", icon: InboxIcon },
@@ -67,6 +69,8 @@ const FOLDER_META: Record<
   WAITING: { label: "Waiting", icon: Hourglass },
   RECEIPTS: { label: "Receipts", icon: Receipt },
   SUBSCRIPTIONS: { label: "Subscriptions", icon: MailOpen },
+  COMMITMENTS: { label: "Commitments", icon: Handshake },
+  PEOPLE: { label: "People", icon: Users },
   SENT: { label: "Sent", icon: Send },
   DRAFTS: { label: "Drafts", icon: FileText },
   SCHEDULED: { label: "Scheduled", icon: CalendarClock },
