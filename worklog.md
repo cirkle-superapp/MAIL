@@ -337,3 +337,27 @@ Stage Summary:
 - BLOCKER: the provided Vercel token is invalid ("User not found"). The actual `vercel deploy` requires a fresh, valid token from the user.
 - All changes pushed to https://github.com/cirkle-superapp/MAIL (commit 6db67c7). Screenshots in the screenshots/ folder on the repo.
 - SECURITY: .env (Neon password) was untracked; no secrets committed.
+
+---
+Task ID: FIX-COMV-ANAL
+Agent: main (Z.ai Code)
+Task: Fix HANDLE AI + Conversation Reconstruction (§8) + Personal Analytics (§41)
+
+Work Log:
+- BUG FIX (HANDLE email): the /api/ai/handle endpoint was returning the deterministic fallback ("AI analysis unavailable") even though the z-ai SDK works. Root cause: the prompt included a FILLED JSON object as the "shape" example, and the model echoed it verbatim (copying the fallback summary text). Fixed by rewriting the prompt to describe each field as a TYPE (not a filled example) + explicit "do NOT copy the field descriptions, write a real analysis". Verified via curl: now returns a real grounded summary ("Priya is sharing final mockups for the Q3 redesign and requesting a review before their 3pm sync meeting."), 6 key-info facts (each with a source quote), 1 commitment, a draft reply, confidence 1.0.
+- Hardened AI JSON extraction (extractJson in src/lib/ai.ts): strips markdown ```json fences; balanced-brace scanner (handles nested objects + trailing prose); direct-parse fast path. All three AI functions (classify/handle/command) + the new conversation function use it. Added console.error logging on parse failures (to the dev log).
+- Conversation Reconstruction (§8): new aiConversation() in src/lib/ai.ts + POST /api/ai/conversation. Builds a plain-text transcript from all messages in a thread (capped at 6000 chars), asks the LLM for a source-grounded structured summary {status, decisions[{text,source}], openQuestions[], commitments[{who,action,due,source}], participants[], nextAction, confidence, provenance}. Every claim cites the source message. New ConversationPanel component in the reading pane (next to the Handle button). Verified via curl: 3 decisions, real nextAction ("Priya to implement the requested changes to testimonial avatars and mobile pricing…"), participants ['Priya Sharma','You'].
+- Personal Analytics (§41): new GET /api/analytics computing totals (received/sent/unread/needs-reply/overdue-commitments), top correspondents, 14-day volume-by-day trend, intent distribution. New AnalyticsView dashboard (KPI cards + a 14-day received/sent bar chart + top correspondents list + intent breakdown). "Visibility, not gamification." Added ANALYTICS to the Workspace nav (BarChart3 icon) + SpecialView + FOLDER_META + buildListQuery guard.
+- REDACTION: worklog.md contained pasted credentials (a Vercel token + a Neon password) from earlier entries; GitHub push protection blocked the push. Redacted both to <REDACTED_*> placeholders and squashed the intermediate snapshot commits into one clean commit on top of 6db67c7 so the pushed history carries no secrets. Push succeeded (6db67c7..c5251e5).
+
+Verification (agent-browser + curl), all passing:
+- /api/ai/handle on the Priya email: real summary + 6 keyInfo + 1 commitment + draft reply + confidence 1.0 (no longer the fallback).
+- /api/ai/conversation on the Priya thread: real status + 3 decisions + nextAction + 2 participants (source-grounded).
+- /api/analytics: totals {received:13, sent:3, unread:3, needsReply:1, overdueCommitments:1} + top correspondents + 14-day volume.
+- Screenshots captured against the production Neon DB: 08-handle-real (226KB), 09-conversation (221KB), 10-analytics (220KB).
+- bun run lint clean (0 errors, 0 warnings).
+
+Stage Summary:
+- The Communication OS AI layer is now genuinely functional: HANDLE email returns real source-grounded analyses (was a fallback-bug), Conversation Reconstruction summarizes whole threads with decisions/open-questions/commitments/participants/next-action, and a Personal Analytics dashboard gives visibility into communication load. All source-grounded (every fact cites the email); graceful fallback intact.
+- Pushed to https://github.com/cirkle-superapp/MAIL (c5251e5). worklog.md redacted of all pasted credentials; push protection now passes.
+- SECURITY NOTE: the Vercel token + Neon password shared earlier are still exposed in the chat (not in the repo anymore) — rotate both.
