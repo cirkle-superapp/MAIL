@@ -23,6 +23,7 @@ import {
   Users,
   Receipt,
   MailOpen,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +85,7 @@ const WORKSPACE_NAV: NavItem[] = [
   { key: "PEOPLE", label: "People", icon: Users },
   { key: "RECEIPTS", label: "Receipts", icon: Receipt },
   { key: "SUBSCRIPTIONS", label: "Subscriptions", icon: MailOpen },
+  { key: "ANALYTICS", label: "Analytics", icon: BarChart3 },
 ];
 
 export function Sidebar({ collapsed }: { collapsed: boolean }) {

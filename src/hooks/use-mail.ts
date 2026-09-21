@@ -23,7 +23,7 @@ export function buildListQuery(state: Pick<MailState, "folder" | "selectedLabel"
   // COMMITMENTS and PEOPLE are not flat email lists — they have dedicated
   // views. Return a harmless query so useEmailList doesn't error; the
   // EmailList component renders the dedicated view instead.
-  if (f === "COMMITMENTS" || f === "PEOPLE") {
+  if (f === "COMMITMENTS" || f === "PEOPLE" || f === "ANALYTICS") {
     return `/api/emails?folder=ARCHIVE&__special=1`;
   }
   if (f === "STARRED") params.set("starred", "true");
@@ -143,6 +143,32 @@ export async function fetchInterpretCommand(command: string): Promise<{
     body: JSON.stringify({ command }),
   });
   if (!res.ok) throw new Error("command failed");
+  return res.json();
+}
+
+// Conversation Reconstruction (§8)
+export interface ConversationResult {
+  status: string;
+  decisions: Array<{ text: string; source: string }>;
+  openQuestions: string[];
+  commitments: Array<{ who: string; action: string; due: string | null; source: string }>;
+  participants: string[];
+  nextAction: string | null;
+  confidence: number;
+  provenance: {
+    threadId: string;
+    messageCount: number;
+    messages: Array<{ id: string; from: string; date: string; subject: string }>;
+  };
+}
+
+export async function fetchConversation(threadId: string): Promise<ConversationResult> {
+  const res = await fetch("/api/ai/conversation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ threadId }),
+  });
+  if (!res.ok) throw new Error("conversation failed");
   return res.json();
 }
 

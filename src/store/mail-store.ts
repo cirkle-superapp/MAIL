@@ -12,7 +12,8 @@ export type SpecialView =
   | "COMMITMENTS"
   | "PEOPLE"
   | "RECEIPTS"
-  | "SUBSCRIPTIONS";
+  | "SUBSCRIPTIONS"
+  | "ANALYTICS";
 export type ComposeMode = "new" | "reply" | "reply-all" | "forward" | "edit-draft";
 
 export interface MailState {

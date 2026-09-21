@@ -35,6 +35,7 @@ import { StarButton } from "@/components/mail/star-button";
 import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { LabelMenu } from "@/components/mail/label-menu";
 import { HandleEmailPanel } from "@/components/mail/handle-email-panel";
+import { ConversationPanel } from "@/components/mail/conversation-panel";
 import { showUndoToast } from "@/components/mail/undo-toast";
 import { useMailStore } from "@/store/mail-store";
 import { useEmailDetail, useInvalidateMail } from "@/hooks/use-mail";
@@ -313,7 +314,7 @@ export function EmailDetail({
               </span>
             </div>
           ) : null}
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <HandleEmailPanel
               emailId={email.id}
               onUseReply={(text) => {
@@ -326,6 +327,7 @@ export function EmailDetail({
                 });
               }}
             />
+            <ConversationPanel threadId={email.threadId} />
           </div>
           {email.labels && (
             <div className="mt-2 flex flex-wrap gap-1.5">

@@ -303,3 +303,37 @@ Pushed to GitHub: `b246658..69c73d0 main -> main`. Verified via GitHub API: remo
 
 Stage Summary:
 - Cirkle Mail now has a Communication OS layer ON TOP of the existing Gmail-like mail: intent-aware classification (15 intents, persisted + badged), a Workspace nav (Now/Reply/Waiting/Commitments/People/Receipts/Subscriptions) as smart intent/state filters, a commitment engine (detection + dedicated view), HANDLE email (source-grounded AI workflow proposals with provenance + graceful fallback), and a universal NL command bar (Cmd+K) — all preserving the existing folders, tabs, compose, search, snooze, schedule-send, settings, and the Cirkle design system. AI is an orchestration layer; the database remains authoritative and every AI output is traceable to source records.
+
+---
+Task ID: DEPLOY
+Agent: main (Z.ai Code)
+Task: Deploy to Vercel with screenshots — Postgres migration, build verification, screenshots
+
+Work Log:
+- Audited deploy readiness: the project used Prisma SQLite (file:./db/custom.db) which CANNOT run on Vercel serverless (ephemeral filesystem). The user-provided Neon Postgres connection string was available.
+- Migrated Prisma datasource provider: sqlite → postgresql. `prisma db push` against Neon succeeded — schema created in Postgres.
+- Found + fixed a stale env var bug: the shell had DATABASE_URL=file:... (old SQLite path) overriding .env. Fixed by spawning the dev server with an explicit DATABASE_URL env.
+- Re-seeded against Neon (POST /api/emails {action:seed}) — populates intent via classifyIntent. Verified stats from Neon: INBOX 13, NOW 4, REPLY 1, RECEIPTS 2 (matches expected).
+- package.json: name → cirkle-mail; build → next build (Vercel-native, dropped standalone cp); add postinstall: prisma generate + vercel-build; start → next start.
+- next.config: dropped output: standalone (Vercel handles Next.js output natively).
+- .env.example updated to a Postgres placeholder. .env (with the real Neon URL) UNTRACKED from git (was tracked from the scaffold — security fix). db/custom.db untracked + /db/ gitignored.
+- Fixed a Communication OS bug: FOLDER_META was missing COMMITMENTS/PEOPLE entries → "Cannot read properties of undefined (reading 'label')" crash when opening those views. Added the entries + Handshake/Users icons.
+- Production build verification: ran `bun run build` (exactly what Vercel runs) → SUCCESS, all routes compiled (/ static + 12 API dynamic routes).
+- Vercel deploy attempted with the provided token (<REDACTED_VERCEL_TOKEN>): both `vercel whoami` and the REST API (GET /v2/user) return "User not found" — the token is invalid (rotated per the security advice given in an earlier message). COULD NOT complete the `vercel deploy` step without a valid token.
+- Captured 7 screenshots of the app running against the production Neon database:
+  01-inbox-light, 02-receipts, 03-commitments, 04-now, 05-handle-email, 06-dark-mode, 07-command-bar.
+- Committed + pushed: 69c73d0..6db67c7 (Postgres migration + screenshots). No secrets staged (verified via git diff scan).
+
+Deploy command (run with a FRESH Vercel token):
+  VERCEL_TOKEN="<fresh-token>" \
+  npx vercel deploy --prod --yes --token "$VERCEL_TOKEN" \
+    && echo "DATABASE_URL=postgresql://neondb_owner:<REDACTED_NEON_PW>@ep-dry-leaf-b41wbtpn-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require" \
+       | npx vercel env add DATABASE_URL production --token "$VERCEL_TOKEN" --yes
+  # then re-deploy so the new env var is picked up:
+  npx vercel deploy --prod --yes --token "$VERCEL_TOKEN"
+
+Stage Summary:
+- The app is fully deploy-ready: Postgres (Neon) migration done + verified, production build succeeds, app runs against the production DB, all Communication OS views work, 7 screenshots captured.
+- BLOCKER: the provided Vercel token is invalid ("User not found"). The actual `vercel deploy` requires a fresh, valid token from the user.
+- All changes pushed to https://github.com/cirkle-superapp/MAIL (commit 6db67c7). Screenshots in the screenshots/ folder on the repo.
+- SECURITY: .env (Neon password) was untracked; no secrets committed.

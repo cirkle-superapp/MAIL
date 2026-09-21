@@ -23,6 +23,7 @@ import {
   Receipt,
   Handshake,
   Users,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -48,7 +49,7 @@ import { EmailRow } from "@/components/mail/email-row";
 import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { LabelMenu } from "@/components/mail/label-menu";
 import { showUndoToast } from "@/components/mail/undo-toast";
-import { CommitmentsView, PeopleView } from "@/components/mail/workspace-views";
+import { CommitmentsView, PeopleView, AnalyticsView } from "@/components/mail/workspace-views";
 import { useMailStore } from "@/store/mail-store";
 import { useSettings } from "@/store/settings-store";
 import { useEmailList, useInvalidateMail } from "@/hooks/use-mail";
@@ -57,7 +58,7 @@ import { type Email, type Folder } from "@/lib/types";
 import { dateBucket, deriveCategory, type Category } from "@/lib/email-utils";
 
 const FOLDER_META: Record<
-  Folder | "STARRED" | "IMPORTANT" | "SNOOZED" | "NOW" | "REPLY" | "WAITING" | "RECEIPTS" | "SUBSCRIPTIONS" | "COMMITMENTS" | "PEOPLE",
+  Folder | "STARRED" | "IMPORTANT" | "SNOOZED" | "NOW" | "REPLY" | "WAITING" | "RECEIPTS" | "SUBSCRIPTIONS" | "COMMITMENTS" | "PEOPLE" | "ANALYTICS",
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
   INBOX: { label: "Inbox", icon: InboxIcon },
@@ -71,6 +72,7 @@ const FOLDER_META: Record<
   SUBSCRIPTIONS: { label: "Subscriptions", icon: MailOpen },
   COMMITMENTS: { label: "Commitments", icon: Handshake },
   PEOPLE: { label: "People", icon: Users },
+  ANALYTICS: { label: "Analytics", icon: BarChart3 },
   SENT: { label: "Sent", icon: Send },
   DRAFTS: { label: "Drafts", icon: FileText },
   SCHEDULED: { label: "Scheduled", icon: CalendarClock },
@@ -326,6 +328,9 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
   }
   if (folder === "PEOPLE") {
     return <PeopleView />;
+  }
+  if (folder === "ANALYTICS") {
+    return <AnalyticsView />;
   }
 
   return (
