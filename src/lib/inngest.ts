@@ -1,7 +1,7 @@
-import { createClient, type FunctionConfig } from "inngest";
+import { Inngest } from "inngest";
 
 /** Inngest client — used for server-side background jobs (scheduled email delivery). */
-export const inngest = createClient({
+export const inngest = new Inngest({
   id: "cirkle-mail",
   isDev: process.env.NODE_ENV !== "production",
 });
@@ -13,9 +13,8 @@ export const inngest = createClient({
  * more reliable (works even when the user isn't looking at the app).
  */
 export const deliverScheduledEmails = inngest.createFunction(
-  { id: "deliver-scheduled-emails", cron: "* * * * *", retries: 2 } as FunctionConfig,
+  { id: "deliver-scheduled-emails", cron: "* * * * *", retries: 2 },
   async () => {
-    // Dynamic import to avoid loading Prisma at module init
     const { db } = await import("@/lib/db");
     const now = new Date();
     const result = await db.email.updateMany({
