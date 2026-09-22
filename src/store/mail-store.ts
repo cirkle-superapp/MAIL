@@ -3,6 +3,7 @@ import type { Folder } from "@/lib/types";
 import type { Category } from "@/lib/email-utils";
 
 export type SpecialView =
+  | "COMMAND_CENTER"
   | "STARRED"
   | "IMPORTANT"
   | "SNOOZED"
@@ -44,7 +45,7 @@ export interface MailState {
 }
 
 export const useMailStore = create<MailState>((set) => ({
-  folder: "INBOX",
+  folder: "COMMAND_CENTER",
   selectedLabel: null,
   searchQuery: "",
   selectedEmailId: null,

@@ -24,6 +24,7 @@ import {
   Handshake,
   Users,
   BarChart3,
+  LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -50,6 +51,7 @@ import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { LabelMenu } from "@/components/mail/label-menu";
 import { showUndoToast } from "@/components/mail/undo-toast";
 import { CommitmentsView, PeopleView, AnalyticsView } from "@/components/mail/workspace-views";
+import { CommandCenterView } from "@/components/mail/command-center";
 import { useMailStore } from "@/store/mail-store";
 import { useSettings } from "@/store/settings-store";
 import { useEmailList, useInvalidateMail } from "@/hooks/use-mail";
@@ -58,9 +60,10 @@ import { type Email, type Folder } from "@/lib/types";
 import { dateBucket, deriveCategory, type Category } from "@/lib/email-utils";
 
 const FOLDER_META: Record<
-  Folder | "STARRED" | "IMPORTANT" | "SNOOZED" | "NOW" | "REPLY" | "WAITING" | "RECEIPTS" | "SUBSCRIPTIONS" | "COMMITMENTS" | "PEOPLE" | "ANALYTICS",
+  Folder | "STARRED" | "IMPORTANT" | "SNOOZED" | "NOW" | "REPLY" | "WAITING" | "RECEIPTS" | "SUBSCRIPTIONS" | "COMMITMENTS" | "PEOPLE" | "ANALYTICS" | "COMMAND_CENTER",
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
+  COMMAND_CENTER: { label: "Command Center", icon: LayoutDashboard },
   INBOX: { label: "Inbox", icon: InboxIcon },
   STARRED: { label: "Starred", icon: Star },
   SNOOZED: { label: "Snoozed", icon: Clock },
@@ -323,6 +326,9 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
     : meta.label;
 
   // Communication OS dedicated views (not flat email lists)
+  if (folder === "COMMAND_CENTER") {
+    return <CommandCenterView />;
+  }
   if (folder === "COMMITMENTS") {
     return <CommitmentsView />;
   }

@@ -277,6 +277,123 @@ export async function aiInterpretCommand(
 
 export const AI_FALLBACK_INTENT = FALLBACK_INTENT;
 
+// ─── Daily Briefing (Communication OS home) ───────────────────────────────
+
+export interface BriefingResult {
+  greeting: string;
+  headline: string;
+  highlights: Array<{ text: string; source: string; severity: "high" | "medium" | "low" }>;
+  suggestedFirstAction: string;
+  confidence: number;
+}
+
+/**
+ * Daily Briefing: a short, source-grounded "here's what matters today"
+ * summary for the Command Center home. Pass compact summaries of the user's
+ * needs-reply / waiting / commitments / receipts items; the model writes a
+ * calm, actionable briefing. Every highlight cites its source. Falls back to
+ * a deterministic briefing if the LLM is unavailable.
+ */
+export async function aiBriefing(input: {
+  needsReply: Array<{ subject: string; fromName: string; snippet: string }>;
+  waiting: Array<{ subject: string; toName: string; snippet: string; ageDays: number }>;
+  commitments: Array<{ action: string; who: string; due: string | null }>;
+  receipts: Array<{ subject: string; fromName: string; snippet: string }>;
+}): Promise<BriefingResult> {
+  const count = input.needsReply.length + input.waiting.length + input.commitments.length + input.receipts.length;
+  const fallback: BriefingResult = {
+    greeting: "",
+    headline: count === 0
+      ? "You're all caught up — nothing needs your attention right now."
+      : `${count} item${count === 1 ? "" : "s"} need a look: ${input.needsReply.length} to reply, ${input.waiting.length} waiting, ${input.commitments.length} commitment${input.commitments.length === 1 ? "" : "s"}, ${input.receipts.length} receipt${input.receipts.length === 1 ? "" : "s"}.`,
+    highlights: [],
+    suggestedFirstAction: input.needsReply[0]
+      ? `Reply to ${input.needsReply[0].fromName} — "${input.needsReply[0].subject}".`
+      : null,
+    confidence: 0.3,
+  };
+  if (count === 0) return fallback;
+  try {
+    const zai = await getZai();
+    const compact = [
+      `NEEDS REPLY (${input.needsReply.length}):`,
+      ...input.needsReply.slice(0, 6).map((e) => `- From ${e.fromName}: "${e.subject}" — ${e.snippet.slice(0, 100)}`),
+      `WAITING ON (${input.waiting.length}):`,
+      ...input.waiting.slice(0, 4).map((e) => `- To ${e.toName}: "${e.subject}" (sent ${e.ageDays}d ago) — ${e.snippet.slice(0, 80)}`),
+      `COMMITMENTS (${input.commitments.length}):`,
+      ...input.commitments.slice(0, 5).map((c) => `- ${c.who}: ${c.action}${c.due ? ` (due ${c.due})` : ""}`),
+      `RECEIPTS (${input.receipts.length}):`,
+      ...input.receipts.slice(0, 4).map((e) => `- From ${e.fromName}: "${e.subject}" — ${e.snippet.slice(0, 80)}`),
+    ].join("\n");
+    const completion = await zai.chat.completions.create({
+      messages: [
+        {
+          role: "assistant",
+          content:
+            "You write a calm, actionable daily email briefing. Respond with ONLY a JSON object (no markdown, no prose) with these keys:\n" +
+            "greeting: a short time-aware greeting like 'Good morning.' (write a real one)\n" +
+            "headline: ONE sentence summarizing what matters most today (write a real sentence, do NOT copy any example)\n" +
+            "highlights: array of {text, source, severity} — the 2-4 most important items; 'text' is a short phrase, 'source' is the exact subject/snippet it came from, 'severity' is high|medium|low\n" +
+            "suggestedFirstAction: the single most useful next step, or null\n" +
+            "confidence: 0-1\n" +
+            "Rules: every 'source' MUST be a verbatim quote from the data. Never invent. Do NOT copy the field descriptions — write a real briefing.",
+        },
+        { role: "user", content: `TODAY'S DATA\n\n${compact}` },
+      ],
+      thinking: { type: "disabled" },
+    });
+    const raw = completion.choices?.[0]?.message?.content ?? "";
+    const parsed = extractJson<Partial<BriefingResult>>(raw);
+    if (!parsed) {
+      console.error("[aiBriefing] no JSON:", raw.slice(0, 300));
+      return fallback;
+    }
+    return { ...fallback, ...parsed };
+  } catch (e) {
+    console.error("[aiBriefing] failed:", e instanceof Error ? e.message : e);
+    return fallback;
+  }
+}
+
+// ─── Smart Follow-up draft ─────────────────────────────────────────────────
+
+/**
+ * Smart Follow-up: draft a polite follow-up for an email the user sent and is
+ * waiting on a reply for. Source-grounded (references the original subject/ask).
+ */
+export async function aiFollowUp(input: {
+  subject: string;
+  toName: string;
+  body: string;
+  ageDays: number;
+}): Promise<{ draft: string; confidence: number } | null> {
+  try {
+    const zai = await getZai();
+    const plain = stripHtml(input.body, 800);
+    const completion = await zai.chat.completions.create({
+      messages: [
+        {
+          role: "assistant",
+          content:
+            "You draft a short, polite follow-up email for a message the user sent that hasn't received a reply. Respond with ONLY a JSON object: {\"draft\":\"...\",\"confidence\":0.0}. The draft should be 2-3 sentences, reference the original ask, and be professional. No markdown, no prose outside the JSON.",
+        },
+        {
+          role: "user",
+          content: `Original subject: ${input.subject}\nTo: ${input.toName}\nSent ${input.ageDays} days ago.\n\nOriginal message:\n${plain}`,
+        },
+      ],
+      thinking: { type: "disabled" },
+    });
+    const raw = completion.choices?.[0]?.message?.content ?? "";
+    const parsed = extractJson<{ draft?: string; confidence?: number }>(raw);
+    if (!parsed || !parsed.draft) return null;
+    return { draft: parsed.draft, confidence: Number(parsed.confidence ?? 0.6) };
+  } catch (e) {
+    console.error("[aiFollowUp] failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // ─── Conversation Reconstruction (§8) ─────────────────────────────────────
 
 export interface ConversationResult {

@@ -23,7 +23,7 @@ export function buildListQuery(state: Pick<MailState, "folder" | "selectedLabel"
   // COMMITMENTS and PEOPLE are not flat email lists — they have dedicated
   // views. Return a harmless query so useEmailList doesn't error; the
   // EmailList component renders the dedicated view instead.
-  if (f === "COMMITMENTS" || f === "PEOPLE" || f === "ANALYTICS") {
+  if (f === "COMMITMENTS" || f === "PEOPLE" || f === "ANALYTICS" || f === "COMMAND_CENTER") {
     return `/api/emails?folder=ARCHIVE&__special=1`;
   }
   if (f === "STARRED") params.set("starred", "true");
@@ -169,6 +169,33 @@ export async function fetchConversation(threadId: string): Promise<ConversationR
     body: JSON.stringify({ threadId }),
   });
   if (!res.ok) throw new Error("conversation failed");
+  return res.json();
+}
+
+// Daily Briefing (Command Center home)
+export interface BriefingResult {
+  greeting: string;
+  headline: string;
+  highlights: Array<{ text: string; source: string; severity: "high" | "medium" | "low" }>;
+  suggestedFirstAction: string | null;
+  confidence: number;
+  counts: { needsReply: number; waiting: number; commitments: number; receipts: number };
+}
+
+export async function fetchBriefing(): Promise<BriefingResult> {
+  const res = await fetch("/api/ai/briefing", { cache: "no-store" });
+  if (!res.ok) throw new Error("briefing failed");
+  return res.json();
+}
+
+// Smart Follow-up draft
+export async function fetchFollowUp(id: string): Promise<{ draft: string; confidence: number; sourceEmailId: string; toEmails: string; subject: string }> {
+  const res = await fetch("/api/ai/followup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) throw new Error("followup failed");
   return res.json();
 }
 

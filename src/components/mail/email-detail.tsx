@@ -14,6 +14,7 @@ import {
   ReplyAll,
   AlertCircle,
   Printer,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -181,6 +182,28 @@ export function EmailDetail({
     if (!email) return;
     patchSilent({ isImportant: !email.isImportant });
   }
+  async function handleFollowUp() {
+    if (!email) return;
+    toast({ title: "Drafting follow-up…", duration: 1500 });
+    try {
+      const res = await fetch("/api/ai/followup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: email.id }),
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      navigator.clipboard?.writeText(data.draft).catch(() => {});
+      openCompose();
+      toast({
+        title: "Follow-up drafted",
+        description: "Copied — paste into your new message.",
+        duration: 3000,
+      });
+    } catch {
+      toast({ title: "Could not draft follow-up", variant: "destructive" });
+    }
+  }
   function applyLabel(label: string) {
     if (!email) return;
     const current = splitLabels(email.labels);
@@ -271,6 +294,11 @@ export function EmailDetail({
         <ActionBtn label="Forward" onClick={() => openForward(email.id)}>
           <Forward className="h-[1.05rem] w-[1.05rem]" />
         </ActionBtn>
+        {email.folder === "SENT" && (
+          <ActionBtn label="Smart follow-up" onClick={handleFollowUp}>
+            <Sparkles className="h-[1.05rem] w-[1.05rem]" />
+          </ActionBtn>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="More">

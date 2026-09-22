@@ -24,6 +24,7 @@ import {
   Receipt,
   MailOpen,
   BarChart3,
+  LayoutDashboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -157,6 +158,29 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
 
       <ScrollArea className="flex-1 px-2 pb-4">
+        {/* Home / Command Center (default landing) */}
+        <div className="mb-1">
+          <nav className="flex flex-col gap-0.5">
+            <button
+              onClick={() => setFolder("COMMAND_CENTER")}
+              className={cn(
+                "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-colors",
+                isActive("COMMAND_CENTER")
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : "text-foreground/80 hover:bg-muted"
+              )}
+            >
+              <LayoutDashboard
+                className={cn(
+                  "h-[1.05rem] w-[1.05rem]",
+                  isActive("COMMAND_CENTER") ? "text-primary" : "text-muted-foreground"
+                )}
+              />
+              <span className="flex-1 truncate text-left">Home</span>
+            </button>
+          </nav>
+        </div>
+
         {/* Communication OS workspace views (§2) */}
         <div className="mb-2">
           <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
