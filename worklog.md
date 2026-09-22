@@ -382,3 +382,20 @@ Verification (agent-browser + curl):
 
 Stage Summary:
 - Cirkle Mail now opens to a unique Command Center home (not the inbox) with an AI Daily Briefing that tells you what matters today, plus Smart Follow-up drafts for emails you're waiting on. This is the differentiating UI architecture + AI that outperforms Gmail/Superhuman/Hey/Notion-Mail — a Communication OS, not an inbox.
+
+---
+Task ID: TRIAGE-TESTS-FIXES
+Agent: main (Z.ai Code)
+Task: AI Triage mode + unit tests (found+fixed 2 real bugs)
+
+Work Log:
+- Unit tests (src/lib/email-utils.test.ts, 27 tests, run with `bun test`): classifyIntent (invoice→INVOICE, question→REQUIRES_REPLY, security alert, newsletter, promotion, commitment, sent-email-not-flagged-as-reply), detectCommitments (outgoing/incoming/request/empty/dedupe), sanitizeEmailHtml (strips scripts/on* handlers/JS URLs, preserves safe content + inline styles), deriveCategory, dateBucket, getInitials, makeSnippet, textToHtml. All 27 pass.
+- BUG FIX #1 (intent classifier, found by the invoice test): SOCIAL_RE had `@.*\.(com|io)` which matched ANY email address ending in .com/.io — mis-classifying invoices + commitments as SOCIAL. Removed the over-broad pattern; kept explicit social-domain keywords (github/goodreads/facebook/etc.). This was a real classification bug affecting the Receipts/Commitments/Now views.
+- BUG FIX #2 (HTML sanitizer, found by the sanitizer tests): sanitizeEmailHtml returned RAW HTML when DOMParser was unavailable (bun test + Next.js SSR) — a real XSS gap on the server. Added a regex fallback for non-browser environments: strips <script>/<style>/<iframe>/<object>/<embed>/<form>/<meta>/<link>/<base>, removes on* event-handler attributes, neutralizes javascript:/vbscript:/data:text/html URLs. The DOM path still runs in the browser (more precise).
+- AI Triage mode (Superhuman-style focus flow): a full-screen overlay (`TriageMode` component) that loads the unread-inbox queue, shows one email at a time in a glass card with the subject + rendered (sanitized) body, and big quick actions: Archive (A/E), Reply (R), Snooze (S), Read & next (K), Skip (N/→), Exit (Esc). Progress counter ("N unread remaining"). "Inbox zero!" completion state. Triggered by the "Triage" button in the Command Center. `triageOpen` state in the store.
+- package.json: added `test: bun test`.
+
+Verification: 27/27 tests pass; bun run lint clean; Triage overlay opens from the Command Center, shows the first unread email, keyboard "A" archives + advances to the next. Screenshot 13-triage.png (534KB). Pushed 2ca3740..50afa14 (no secrets).
+
+Stage Summary:
+- Cirkle Mail now has a test suite (27 tests) that caught 2 real bugs (the SOCIAL_RE over-match + the SSR sanitizer no-op), both fixed. Plus a Superhuman-style AI Triage mode for inbox-zero workflows. The deterministic core (intent/commitment/sanitizer/category/bucketing) is now test-covered.
