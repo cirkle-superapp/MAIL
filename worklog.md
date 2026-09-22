@@ -361,3 +361,24 @@ Stage Summary:
 - The Communication OS AI layer is now genuinely functional: HANDLE email returns real source-grounded analyses (was a fallback-bug), Conversation Reconstruction summarizes whole threads with decisions/open-questions/commitments/participants/next-action, and a Personal Analytics dashboard gives visibility into communication load. All source-grounded (every fact cites the email); graceful fallback intact.
 - Pushed to https://github.com/cirkle-superapp/MAIL (c5251e5). worklog.md redacted of all pasted credentials; push protection now passes.
 - SECURITY NOTE: the Vercel token + Neon password shared earlier are still exposed in the chat (not in the repo anymore) — rotate both.
+
+---
+Task ID: CC-BRIEF-FOLLOWUP
+Agent: main (Z.ai Code)
+Task: Command Center home + Daily Briefing AI + Smart Follow-up (unique differentiators)
+
+Work Log:
+- Command Center (unique home view, default landing): instead of landing on the Inbox (like Gmail/Superhuman/Hey), Cirkle Mail now opens to a Command Center — an aurora/glass canvas with the animated Cirkle logo, a time-aware greeting + date, an AI Daily Briefing card, a 6-card summary grid (Now/Reply/Waiting/Commitments/Receipts/Subscriptions with live counts + gradient accents, each clickable to its view), and quick links. New sidebar 'Home' item (top). COMMAND_CENTER SpecialView + FOLDER_META + buildListQuery guard. This is the unique UI architecture: an AI-curated triage surface, not an inbox.
+- Daily Briefing (AI): /api/ai/briefing (GET) gathers needs-reply + waiting + commitments (deterministic detectCommitments) + receipts, passes a compact summary to the LLM, returns {greeting, headline, highlights[{text,source,severity}], suggestedFirstAction, confidence, counts}. Source-grounded (every highlight cites the subject/snippet). aiBriefing() in src/lib/ai.ts with the type-description prompt (avoids the echo-example bug). BriefingCard in command-center.tsx. Verified: real headline ("You have one email requiring a reply and a property tax payment due in two days."), 4 highlights with source quotes + severity, a real firstAction ("Reply to Priya Sharma with feedback on the Q3 product redesign mockups").
+- Smart Follow-up (AI): /api/ai/followup (POST) drafts a polite follow-up for a sent email the user is waiting on a reply for. aiFollowUp() in src/lib/ai.ts. New "Smart follow-up" button in the email-detail toolbar (SENT emails only) — calls the endpoint, copies the draft + opens compose + toasts. Verified: real draft ("Hi Priya, just following up on my email from earlier today regarding the Q3 product redesign mockups. I wanted to check…"), confidence 0.9.
+- Hooks: fetchBriefing + fetchFollowUp in use-mail.ts.
+- Screenshots captured against Neon: 11-command-center (425KB), 12-command-center-dark (425KB) — the aurora/glass home canvas with the briefing + summary cards.
+
+Verification (agent-browser + curl):
+- /api/ai/briefing: real headline + 4 highlights + firstAction + counts {needsReply:1, waiting:3, commitments:4, receipts:1}.
+- /api/ai/followup: real draft + 0.9 confidence.
+- Command Center renders: greeting + Daily Briefing card + 6 summary cards + quick links.
+- bun run lint clean; pushed ffdf298..8f24812 (no secrets).
+
+Stage Summary:
+- Cirkle Mail now opens to a unique Command Center home (not the inbox) with an AI Daily Briefing that tells you what matters today, plus Smart Follow-up drafts for emails you're waiting on. This is the differentiating UI architecture + AI that outperforms Gmail/Superhuman/Hey/Notion-Mail — a Communication OS, not an inbox.
