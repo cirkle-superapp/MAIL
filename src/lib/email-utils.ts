@@ -94,6 +94,16 @@ export function textToHtml(text: string): string {
   return linkify(escapeHtml(text)).replace(/\n/g, "<br/>");
 }
 
+/** Estimate reading time for an email body (200 wpm). Returns "2 min" or "30 sec". */
+export function readingTime(html: string): string {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const words = text.split(" ").filter(Boolean).length;
+  const mins = words / 200;
+  if (mins < 0.5) return "<1 min";
+  if (mins < 1) return "1 min";
+  return `${Math.round(mins)} min`;
+}
+
 export type SnoozePreset = {
   key: string;
   label: string;

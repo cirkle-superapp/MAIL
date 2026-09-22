@@ -47,6 +47,7 @@ import {
   formatEmailTime,
   formatFullDate,
   sanitizeEmailHtml,
+  readingTime,
   INTENT_LABELS,
   INTENT_COLORS,
   type Intent,
@@ -331,7 +332,7 @@ export function EmailDetail({
           </div>
           {/* Intent badge + HANDLE email (§16) */}
           {email.intent ? (
-            <div className="mt-2">
+            <div className="mt-2 flex items-center gap-2">
               <span
                 className={cn(
                   "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
@@ -339,6 +340,10 @@ export function EmailDetail({
                 )}
               >
                 {INTENT_LABELS[email.intent as Intent] ?? email.intent}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                {readingTime(email.body)} read
               </span>
             </div>
           ) : null}

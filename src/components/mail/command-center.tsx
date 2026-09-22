@@ -25,7 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import { useMailStore } from "@/store/mail-store";
-import { useEmailStats } from "@/hooks/use-mail";
+import { useEmailStats, useInvalidateMail } from "@/hooks/use-mail";
 import { fetchBriefing } from "@/hooks/use-mail";
 import type { SpecialView } from "@/store/mail-store";
 import { CirkleLogo } from "@/components/brand/cirkle-logo";
@@ -68,6 +68,7 @@ export function CommandCenterView() {
   const openCompose = useMailStore((s) => s.openCompose);
   const setTriageOpen = useMailStore((s) => s.setTriageOpen);
   const stats = useEmailStats();
+  const invalidate = useInvalidateMail();
   const counts = stats.data?.counts ?? {};
 
   const { data: briefing, isLoading } = useQuery({
@@ -163,6 +164,35 @@ export function CommandCenterView() {
           <QuickLink label="People" onClick={() => setFolder("PEOPLE")} icon={Handshake} />
           <QuickLink label="Analytics" onClick={() => setFolder("ANALYTICS")} icon={LayoutDashboard} />
           <QuickLink label="All Mail" onClick={() => setFolder("ARCHIVE")} icon={MailOpen} />
+          {counts.SUBSCRIPTIONS > 0 ? (
+            <button
+              onClick={async () => {
+                toast({ title: "Magic archiving newsletters…", duration: 1500 });
+                try {
+                  const res = await fetch("/api/emails?folder=INBOX&view=subscriptions", { cache: "no-store" });
+                  const data = await res.json();
+                  const ids = (data.emails ?? []).map((e: { id: string }) => e.id);
+                  if (ids.length === 0) {
+                    toast({ title: "No newsletters to archive" });
+                    return;
+                  }
+                  await fetch("/api/emails", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ids, folder: "ARCHIVE" }),
+                  });
+                  invalidate();
+                  toast({ title: `Archived ${ids.length} newsletter${ids.length === 1 ? "" : "s"} ✨` });
+                } catch {
+                  toast({ title: "Could not archive", variant: "destructive" });
+                }
+              }}
+              className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/5 px-3 py-1.5 text-xs text-accent transition hover:bg-accent/10"
+            >
+              <Sparkles className="h-3 w-3" />
+              Magic Archive {counts.SUBSCRIPTIONS} newsletters
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

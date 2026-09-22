@@ -37,6 +37,7 @@ import {
 import { RichTextEditor } from "@/components/mail/rich-text-editor";
 import { RecipientInput } from "@/components/mail/recipient-input";
 import { CopilotButton } from "@/components/mail/copilot-button";
+import { VoiceInput } from "@/components/mail/voice-input";
 import type { Email } from "@/lib/types";
 
 type WindowState = "normal" | "minimized" | "maximized";
@@ -510,6 +511,19 @@ export function ComposeDialog() {
               setText={(html) => {
                 setBodyHtml(html);
                 setEditorKey((k) => k + 1);
+              }}
+            />
+            <VoiceInput
+              onTranscript={(text, isFinal) => {
+                if (isFinal) {
+                  const el = document.querySelector(
+                    '[contenteditable][role="textbox"]'
+                  ) as HTMLElement | null;
+                  if (el) {
+                    el.focus();
+                    document.execCommand("insertText", false, text);
+                  }
+                }
               }}
             />
             <Button

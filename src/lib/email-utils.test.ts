@@ -8,6 +8,7 @@ import {
   getInitials,
   makeSnippet,
   textToHtml,
+  readingTime,
 } from "./email-utils";
 
 describe("classifyIntent", () => {
@@ -217,5 +218,17 @@ describe("textToHtml", () => {
     expect(h).toContain("&lt;script&gt;");
     expect(h).toContain("<br/>");
     expect(h).not.toContain("<script>");
+  });
+});
+
+describe("readingTime", () => {
+  it("returns '<1 min' for short text", () => {
+    expect(readingTime("<p>Hi there</p>")).toBe("<1 min");
+  });
+  it("returns minutes for longer text", () => {
+    const words = "word ".repeat(500);
+    const rt = readingTime(`<p>${words}</p>`);
+    expect(rt).toMatch(/\d+ min/);
+    expect(parseInt(rt)).toBeGreaterThanOrEqual(2);
   });
 });
