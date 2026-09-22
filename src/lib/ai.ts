@@ -439,3 +439,46 @@ export async function aiInterpretCommand(command: string): Promise<{
 }
 
 export const AI_FALLBACK_INTENT = { intent: "FYI", confidence: 0.4, reason: "AI unavailable — fell back to default" };
+
+// ─── AI Composition Copilot (inline draft improvement) ─────────────────────
+
+export async function aiImprove(input: {
+  text: string;
+  instruction: string;
+}): Promise<{ text: string; confidence: number } | null> {
+  const plain = stripHtml(input.text, 3000);
+  const instructionMap: Record<string, string> = {
+    professional: "Rewrite this email draft to be more professional and polished. Keep the same meaning.",
+    concise: "Rewrite this email draft to be more concise and to the point. Remove fluff.",
+    friendly: "Rewrite this email draft to be warmer and more friendly, while staying professional.",
+    urgent: "Rewrite this email draft to convey appropriate urgency without being aggressive.",
+    "add-call-to-action": "Rewrite this email draft to add a clear call-to-action at the end.",
+    "fix-grammar": "Fix any grammar, spelling, or punctuation issues in this email draft. Keep the meaning the same.",
+  };
+  const systemInstruction = instructionMap[input.instruction] ?? instructionMap.professional;
+  const messages: Msg[] = [
+    {
+      role: "assistant",
+      content:
+        systemInstruction +
+        " Respond with ONLY a JSON object: {\"text\":\"...\",\"confidence\":0.0}. The 'text' is the improved version. No markdown, no prose outside the JSON.",
+    },
+    { role: "user", content: plain },
+  ];
+  const responses = await multiModel(messages, [
+    { name: "deepseek", call: () => callOpenRouter("deepseek/deepseek-chat", messages, 20000) },
+    { name: "z-ai", call: () => callZai(messages) },
+  ]);
+  let best: { text: string; confidence: number } | null = null;
+  for (const r of responses) {
+    const parsed = extractJson<{ text?: string; confidence?: number }>(r.content);
+    if (parsed?.text) {
+      if (!best || (parsed.confidence ?? 0) > (best.confidence ?? 0)) {
+        best = { text: parsed.text, confidence: parsed.confidence ?? 0.7 };
+      }
+    }
+  }
+  if (best) return best;
+  console.error("[aiImprove] no valid JSON from any model");
+  return null;
+}

@@ -36,6 +36,7 @@ import {
 } from "@/lib/email-utils";
 import { RichTextEditor } from "@/components/mail/rich-text-editor";
 import { RecipientInput } from "@/components/mail/recipient-input";
+import { CopilotButton } from "@/components/mail/copilot-button";
 import type { Email } from "@/lib/types";
 
 type WindowState = "normal" | "minimized" | "maximized";
@@ -504,6 +505,13 @@ export function ComposeDialog() {
             >
               <Paperclip className="h-4 w-4" />
             </Button>
+            <CopilotButton
+              getText={() => bodyHtml}
+              setText={(html) => {
+                setBodyHtml(html);
+                setEditorKey((k) => k + 1);
+              }}
+            />
             <Button
               variant="ghost"
               size="sm"
