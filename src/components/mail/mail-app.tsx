@@ -9,6 +9,7 @@ import { ComposeDialog } from "@/components/mail/compose-dialog";
 import { ShortcutsHelpDialog } from "@/components/mail/shortcuts-help";
 import { SettingsDialog } from "@/components/mail/settings-dialog";
 import { CommandBar } from "@/components/mail/command-bar";
+import { TriageMode } from "@/components/mail/triage-mode";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useMailStore } from "@/store/mail-store";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -121,6 +122,7 @@ export function MailApp() {
       <ShortcutsHelpDialog />
       <SettingsDialog />
       <CommandBar />
+      <TriageMode />
     </div>
   );
 }

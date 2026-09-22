@@ -66,6 +66,7 @@ function greeting(): string {
 export function CommandCenterView() {
   const setFolder = useMailStore((s) => s.setFolder);
   const openCompose = useMailStore((s) => s.openCompose);
+  const setTriageOpen = useMailStore((s) => s.setTriageOpen);
   const stats = useEmailStats();
   const counts = stats.data?.counts ?? {};
 
@@ -91,6 +92,15 @@ export function CommandCenterView() {
             <p className="text-sm text-muted-foreground">{today}</p>
           </div>
           <div className="ml-auto hidden items-center gap-2 sm:flex">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-accent/30 text-accent hover:bg-accent/5"
+              onClick={() => setTriageOpen(true)}
+              title="Triage unread messages (Superhuman-style focus flow)"
+            >
+              <Zap className="h-3.5 w-3.5" /> Triage
+            </Button>
             <Button
               variant="outline"
               size="sm"

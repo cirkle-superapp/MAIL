@@ -185,37 +185,52 @@ const DANGEROUS_TAGS = [
 ];
 
 export function sanitizeEmailHtml(html: string): string {
-  if (typeof window === "undefined" || typeof DOMParser === "undefined") {
-    return html;
-  }
-  const doc = new DOMParser().parseFromString(html, "text/html");
-
-  // Remove dangerous tags (and their contents)
-  for (const tag of DANGEROUS_TAGS) {
-    doc.querySelectorAll(tag).forEach((el) => el.remove());
-  }
-
-  // Strip on* event handlers + neutralize javascript:/vbscript:/data: URLs
-  const all = doc.querySelectorAll("*");
-  all.forEach((el) => {
-    // remove event-handler attributes
-    for (const attr of Array.from(el.attributes)) {
-      const name = attr.name.toLowerCase();
-      const val = (attr.value || "").trim().toLowerCase();
-      if (name.startsWith("on")) {
-        el.removeAttribute(attr.name);
-      } else if (
-        (name === "href" || name === "src" || name === "xlink:href") &&
-        (val.startsWith("javascript:") ||
-          val.startsWith("vbscript:") ||
-          val.startsWith("data:text/html"))
-      ) {
-        el.setAttribute(attr.name, "#");
-      }
+  if (!html) return "";
+  // Browser path: DOMParser (more precise).
+  if (typeof window !== "undefined" && typeof DOMParser !== "undefined") {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    for (const tag of DANGEROUS_TAGS) {
+      doc.querySelectorAll(tag).forEach((el) => el.remove());
     }
-  });
-
-  return doc.body ? doc.body.innerHTML : html;
+    doc.querySelectorAll("*").forEach((el) => {
+      for (const attr of Array.from(el.attributes)) {
+        const name = attr.name.toLowerCase();
+        const val = (attr.value || "").trim().toLowerCase();
+        if (name.startsWith("on")) {
+          el.removeAttribute(attr.name);
+        } else if (
+          (name === "href" || name === "src" || name === "xlink:href") &&
+          (val.startsWith("javascript:") ||
+            val.startsWith("vbscript:") ||
+            val.startsWith("data:text/html"))
+        ) {
+          el.setAttribute(attr.name, "#");
+        }
+      }
+    });
+    return doc.body ? doc.body.innerHTML : html;
+  }
+  // SSR / test path (no DOMParser): regex fallback that blocks the common XSS
+  // vectors. Less precise than DOM parsing but prevents script injection when
+  // rendering server-side (the DOM path runs again on the client).
+  let out = html;
+  // remove dangerous tags (and their contents where applicable)
+  out = out.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  out = out.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+  out = out.replace(/<(iframe|object|embed|form|meta|link|base|applet)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+  out = out.replace(/<(iframe|object|embed|form|meta|link|base|applet)\b[^>]*\/?>/gi, "");
+  // strip on* event handlers
+  out = out.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  // neutralize javascript:/vbscript:/data:text/html in href/src
+  out = out.replace(
+    /(href|src|xlink:href)\s*=\s*"(javascript:|vbscript:|data:text\/html)[^"]*"/gi,
+    '$1="#"'
+  );
+  out = out.replace(
+    /(href|src|xlink:href)\s*=\s*'(javascript:|vbscript:|data:text\/html)[^']*'/gi,
+    "$1='#'"
+  );
+  return out;
 }
 
 export type Category = "PRIMARY" | "PROMOTIONS" | "SOCIAL" | "UPDATES";
@@ -223,7 +238,7 @@ export type Category = "PRIMARY" | "PROMOTIONS" | "SOCIAL" | "UPDATES";
 const PROMO_RE =
   /(newsletter|digest|weekly|substack|promo|promotion|deals?|offers?|sale|coupon|unsubscribe|mailing)/i;
 const SOCIAL_RE =
-  /(github|goodreads|facebook|twitter|x\.com|linkedin|instagram|tiktok|snapchat|discord|slack|social|notifications?@|@.*\.(com|io))/i;
+  /(github|goodreads|facebook|twitter|x\.com|linkedin|instagram|tiktok|snapchat|discord|slack|notifications?@)/i;
 const UPDATES_RE =
   /(invoice|receipt|billing|payment|order|shipping|delivery|tracking|statement|bank|tax|receipt|confirm|verification|security|alert|reminder|no-?reply)/i;
 
