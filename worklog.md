@@ -399,3 +399,25 @@ Verification: 27/27 tests pass; bun run lint clean; Triage overlay opens from th
 
 Stage Summary:
 - Cirkle Mail now has a test suite (27 tests) that caught 2 real bugs (the SOCIAL_RE over-match + the SSR sanitizer no-op), both fixed. Plus a Superhuman-style AI Triage mode for inbox-zero workflows. The deterministic core (intent/commitment/sanitizer/category/bucketing) is now test-covered.
+
+---
+Task ID: AI-CONSENSUS
+Agent: main (Z.ai Code)
+Task: Multi-model AI consensus layer (OpenRouter + z-ai) — classify by majority vote, generate by best-confidence
+
+Work Log:
+- Tested the provided API keys: OpenRouter works (3 models: meta-llama/llama-3.1-8b-instruct, qwen/qwen-2.5-7b-instruct, deepseek/deepseek-chat — all return valid chat completions from this sandbox). Groq returns "Forbidden" (key invalid or region-blocked). Gemini returns 404 (model name issue). NVIDIA + HF untested (OpenRouter provides enough models).
+- Rewrote src/lib/ai.ts as a multi-model consensus layer:
+  - callOpenRouter(model, messages, timeout) — POST to OpenRouter (OpenAI-compatible) with AbortController + timeout.
+  - callZai(messages) — the existing z-ai SDK (works from the sandbox + Vercel).
+  - multiModel(messages, models) — calls all models in parallel via Promise.allSettled, returns non-null responses.
+  - Classification: 4 models in parallel (OpenRouter llama-3.1-8b + qwen-2.5-7b + deepseek-chat + z-ai SDK) → MAJORITY VOTE on the intent → confidence = agreement fraction (1.0 = unanimous). Verified: REQUIRES_REPLY with 4/4 unanimous = confidence 1.0.
+  - Generation (HANDLE, conversation, briefing, followup, command): 2 models in parallel (OpenRouter deepseek-chat + z-ai SDK) → best-confidence pick (the result with the higher confidence wins). Verified: HANDLE returns real summary + 6 key facts + draft reply + confidence 1.0.
+  - Each OpenRouter call has a 15-25s timeout + AbortController; graceful fallback to z-ai if OpenRouter is unavailable (region-blocked/timeout/key-missing). The z-ai SDK is the built-in fallback (always works from the sandbox).
+  - API keys stored in .env (gitignored, NOT tracked — verified via git ls-files .env = empty): OPENROUTER_API_KEY, GROQ_API_KEY, GEMINI_API_KEY, NVIDIA_API_KEY, HF_API_KEY. .env.example documents them (empty placeholders, no real keys).
+  - No breaking interface changes: all exported types (HandleResult, ConversationResult, BriefingResult) + the extractJson/stripHtml helpers preserved; all API routes + frontend components unchanged.
+- Verified: classify (4-model consensus → REQUIRES_REPLY, conf 1.0, source "ai"); HANDLE (2-model → real summary "Priya is sharing final Q3 redesign mockups and requesting a review before a 3pm sync meeting", 6 keyInfo, 1 commitment, draft reply, conf 1.0). 27/27 tests pass; lint clean. Pushed 53cf146..72e3dad (no secrets — verified via git diff scan).
+
+Stage Summary:
+- Cirkle Mail's AI is now powered by a multi-model consensus: classification uses 4 models with majority vote (unanimous = 1.0 confidence), generation uses 2 models with best-confidence pick. The z-ai SDK is the always-available fallback. API keys are gitignored + never committed. This makes the AI more reliable + less prone to single-model hallucination (aligns with §28 AI as orchestration + §29 source-grounded + §44 graceful degradation).
+- SECURITY: the OpenRouter, Groq, Gemini, NVIDIA, and HuggingFace API keys shared in this message are exposed in the chat — rotate them after this session.
