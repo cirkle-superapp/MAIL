@@ -37,6 +37,7 @@ import { SnoozeMenu } from "@/components/mail/snooze-menu";
 import { LabelMenu } from "@/components/mail/label-menu";
 import { HandleEmailPanel } from "@/components/mail/handle-email-panel";
 import { ConversationPanel } from "@/components/mail/conversation-panel";
+import { QuickReplyChips } from "@/components/mail/quick-reply-chips";
 import { showUndoToast } from "@/components/mail/undo-toast";
 import { useMailStore } from "@/store/mail-store";
 import { useEmailDetail, useInvalidateMail } from "@/hooks/use-mail";
@@ -361,6 +362,9 @@ export function EmailDetail({
               }}
             />
             <ConversationPanel threadId={email.threadId} />
+          </div>
+          <div className="mt-3">
+            <QuickReplyChips emailId={email.id} emailSubject={email.subject} />
           </div>
           {email.labels && (
             <div className="mt-2 flex flex-wrap gap-1.5">

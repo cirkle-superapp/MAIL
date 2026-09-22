@@ -38,6 +38,7 @@ import { RichTextEditor } from "@/components/mail/rich-text-editor";
 import { RecipientInput } from "@/components/mail/recipient-input";
 import { CopilotButton } from "@/components/mail/copilot-button";
 import { VoiceInput } from "@/components/mail/voice-input";
+import { SubjectImprover } from "@/components/mail/subject-improver";
 import type { Email } from "@/lib/types";
 
 type WindowState = "normal" | "minimized" | "maximized";
@@ -456,6 +457,7 @@ export function ComposeDialog() {
                 className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
                 aria-label="Subject"
               />
+              <SubjectImprover subject={subject} onPick={setSubject} />
             </div>
           </div>
 

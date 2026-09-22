@@ -440,6 +440,55 @@ export async function aiInterpretCommand(command: string): Promise<{
 
 export const AI_FALLBACK_INTENT = { intent: "FYI", confidence: 0.4, reason: "AI unavailable — fell back to default" };
 
+// ─── One-Click Quick Replies (context-aware, per-email) ─────────────────────
+
+export async function aiQuickReplies(email: {
+  subject: string; fromName: string; fromEmail: string; body: string;
+}): Promise<Array<{ text: string; tone: string }> | null> {
+  const plain = stripHtml(email.body, 1500);
+  const messages: Msg[] = [
+    {
+      role: "assistant",
+      content:
+        "You generate 3 short one-click reply options for this email. Respond with ONLY a JSON array: [{\"text\":\"...\",\"tone\":\"...\"}]. Each 'text' is 2-8 words (what the user would click to send as a quick reply). 'tone' is one of: positive, neutral, declining, question. Make the replies specific to THIS email's content (not generic). No markdown, no prose outside the JSON array.",
+    },
+    { role: "user", content: `From: ${email.fromName}\nSubject: ${email.subject}\n\n${plain}` },
+  ];
+  const responses = await multiModel(messages, [
+    { name: "llama-3.1-8b", call: () => callOpenRouter("meta-llama/llama-3.1-8b-instruct", messages, 15000) },
+    { name: "z-ai", call: () => callZai(messages) },
+  ]);
+  for (const r of responses) {
+    const parsed = extractJson<Array<{ text?: string; tone?: string }>>(r.content);
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.text) {
+      return parsed.filter((p) => p.text).slice(0, 3).map((p) => ({ text: p.text!, tone: p.tone ?? "neutral" }));
+    }
+  }
+  return null;
+}
+
+// ─── AI Subject Line Improver ────────────────────────────────────────────────
+
+export async function aiImproveSubject(draft: string): Promise<string[] | null> {
+  const messages: Msg[] = [
+    {
+      role: "assistant",
+      content:
+        "You suggest 3 improved email subject lines for the user's draft subject. Respond with ONLY a JSON array of strings: [\"subject 1\", \"subject 2\", \"subject 3\"]. Make them clear, concise, and professional. No markdown, no prose outside the JSON.",
+    },
+    { role: "user", content: `Draft subject: "${draft}"\n\nSuggest 3 better subject lines.` },
+  ];
+  const responses = await multiModel(messages, [
+    { name: "llama-3.1-8b", call: () => callOpenRouter("meta-llama/llama-3.1-8b-instruct", messages, 12000) },
+    { name: "z-ai", call: () => callZai(messages) },
+  ]);
+  for (const r of responses) {
+    const parsed = extractJson<string[]>(r.content);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, 3);
+  }
+  return null;
+}
+
 // ─── AI Composition Copilot (inline draft improvement) ─────────────────────
 
 export async function aiImprove(input: {
