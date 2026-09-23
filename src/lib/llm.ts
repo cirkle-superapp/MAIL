@@ -34,30 +34,35 @@ export interface ChatCompletion {
 /** Call Groq (ultra-fast, OpenAI-compatible API). */
 async function callGroq(messages: ChatMessage[]): Promise<ChatCompletion | null> {
   try {
-    // Convert system → assistant for Groq compatibility
     const mapped = messages.map(m => ({
       role: m.role === 'system' ? 'system' : m.role,
       content: m.content,
     }))
-    const resp = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GROQ_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: mapped,
-        temperature: 0.3,
-        max_tokens: 2000,
-      }),
-      signal: AbortSignal.timeout(15000),
-    })
-    if (!resp.ok) return null
-    const data = await resp.json()
-    const content = data?.choices?.[0]?.message?.content
-    if (!content) return null
-    return { content, provider: 'groq' }
+    // Try multiple model names — Groq changes available models periodically
+    const models = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it']
+    for (const model of models) {
+      try {
+        const resp = await fetch(GROQ_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GROQ_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            messages: mapped,
+            temperature: 0.3,
+            max_tokens: 2000,
+          }),
+          signal: AbortSignal.timeout(15000),
+        })
+        if (!resp.ok) continue
+        const data = await resp.json()
+        const content = data?.choices?.[0]?.message?.content
+        if (content) return { content, provider: 'groq' }
+      } catch { continue }
+    }
+    return null
   } catch {
     return null
   }
@@ -66,7 +71,6 @@ async function callGroq(messages: ChatMessage[]): Promise<ChatCompletion | null>
 /** Call Gemini (Google AI Studio, REST API). */
 async function callGemini(messages: ChatMessage[]): Promise<ChatCompletion | null> {
   try {
-    // Convert messages to Gemini format (contents array)
     const systemMsg = messages.find(m => m.role === 'system')
     const userMsgs = messages.filter(m => m.role !== 'system')
     const contents = userMsgs.map(m => ({
@@ -75,27 +79,35 @@ async function callGemini(messages: ChatMessage[]): Promise<ChatCompletion | nul
     }))
     const body: any = {
       contents,
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 2000,
-      },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
     }
     if (systemMsg) {
-      body.systemInstruction = {
-        parts: [{ text: systemMsg.content }],
-      }
+      body.systemInstruction = { parts: [{ text: systemMsg.content }] }
     }
-    const resp = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20000),
-    })
-    if (!resp.ok) return null
-    const data = await resp.json()
-    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!content) return null
-    return { content, provider: 'gemini' }
+    // Try both key-as-query-param and key-as-bearer (the key format
+    // from the user may need either method).
+    const endpoints = [
+      `${GEMINI_URL}?key=${GEMINI_KEY}`,
+      GEMINI_URL.replace(':generateContent', ':generateContent'),
+    ]
+    for (const url of endpoints) {
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': GEMINI_KEY,
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(20000),
+        })
+        if (!resp.ok) continue
+        const data = await resp.json()
+        const content = data?.candidates?.[0]?.content?.parts?.[0]?.text
+        if (content) return { content, provider: 'gemini' }
+      } catch { continue }
+    }
+    return null
   } catch {
     return null
   }
@@ -108,27 +120,39 @@ async function callOpenRouter(messages: ChatMessage[]): Promise<ChatCompletion |
       role: m.role === 'system' ? 'system' : m.role,
       content: m.content,
     }))
-    const resp = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://cirkle-mail.vercel.app',
-        'X-Title': 'CIRKLE Search',
-      },
-      body: JSON.stringify({
-        model: 'meta-llama/llama-3.1-8b-instruct:free',
-        messages: mapped,
-        temperature: 0.3,
-        max_tokens: 2000,
-      }),
-      signal: AbortSignal.timeout(20000),
-    })
-    if (!resp.ok) return null
-    const data = await resp.json()
-    const content = data?.choices?.[0]?.message?.content
-    if (!content) return null
-    return { content, provider: 'openrouter' }
+    // Try multiple free models — OpenRouter changes availability periodically
+    const models = [
+      'google/gemini-flash-1.5',
+      'meta-llama/llama-3.1-8b-instruct',
+      'mistralai/mistral-7b-instruct',
+      'google/gemma-2-9b-it',
+      'qwen/qwen-2-7b-instruct',
+    ]
+    for (const model of models) {
+      try {
+        const resp = await fetch(OPENROUTER_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${OPENROUTER_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://cirkle-mail.vercel.app',
+            'X-Title': 'CIRKLE Search',
+          },
+          body: JSON.stringify({
+            model,
+            messages: mapped,
+            temperature: 0.3,
+            max_tokens: 2000,
+          }),
+          signal: AbortSignal.timeout(20000),
+        })
+        if (!resp.ok) continue
+        const data = await resp.json()
+        const content = data?.choices?.[0]?.message?.content
+        if (content) return { content, provider: 'openrouter' }
+      } catch { continue }
+    }
+    return null
   } catch {
     return null
   }
