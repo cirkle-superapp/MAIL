@@ -1,0 +1,2257 @@
+# NEXT-GENERATION SEARCH ENGINE
+
+## Master Product Blueprint + Implementation Specification
+
+### Version 1.0
+
+---
+
+# 1. PRODUCT VISION
+
+Build a global, independent, Google-class search engine that provides:
+
+* Its own web crawler
+* Its own web index
+* Its own ranking engine
+* Semantic and lexical search
+* Entity and knowledge-graph search
+* News search
+* Image search
+* Video search
+* Document search
+* Local search
+* Community search
+* Academic search
+* Official-source search
+* AI-assisted search
+* Deep Research
+* Search transparency
+* User-controlled personalization
+* Privacy-first search
+* Explicit advertising separation
+* Search-quality and source-quality signals
+
+The product must **not be a Google clone**.
+
+Its objective is to preserve the power of large-scale web search while correcting common search-experience problems:
+
+> Too much SEO manipulation, repetitive results, insufficient source transparency, excessive personalization, unclear advertising, overreliance on AI summaries, poor control over search behavior, and difficulty distinguishing primary, official, community, commercial and secondary information.
+
+The core philosophy is:
+
+> **Search should help users discover the web, understand the information, evaluate the evidence, and control how the engine searches.**
+
+---
+
+# 2. NON-NEGOTIABLE PRODUCT PRINCIPLES
+
+The system must follow these principles throughout the architecture.
+
+## 2.1 Relevance over SEO
+
+Ranking must prioritize usefulness and relevance rather than pages optimized primarily for search-engine visibility.
+
+## 2.2 Evidence over AI confidence
+
+AI must never treat confidence as proof.
+
+AI-generated claims must be tied to retrieved evidence whenever factual claims are made.
+
+## 2.3 User control over hidden personalization
+
+Users must be able to understand and control personalization.
+
+## 2.4 Diversity over repetition
+
+Ten copies of substantially identical content should not consume ten major result positions.
+
+## 2.5 Freshness without sacrificing quality
+
+Newer content should not automatically outrank better content.
+
+## 2.6 Clear information categories
+
+The engine must distinguish:
+
+* Organic
+* Sponsored
+* Official
+* Government
+* Academic
+* News
+* Community
+* Commercial
+* Primary source
+* Secondary source
+
+## 2.7 AI assists discovery; AI does not replace the web
+
+The search engine must continue sending users to original sources.
+
+## 2.8 No hidden manipulation
+
+Search controls, personalization, advertising and ranking explanations must be understandable to ordinary users.
+
+---
+
+# 3. HIGH-LEVEL SYSTEM ARCHITECTURE
+
+Implement the platform as the following logical system:
+
+```text
+                         SEARCH ENGINE
+                              │
+                    ┌─────────▼─────────┐
+                    │   Search Gateway  │
+                    └─────────┬─────────┘
+                              │
+                    ┌─────────▼─────────┐
+                    │ Query Understanding│
+                    └─────────┬─────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+  Lexical Retrieval     Semantic Retrieval     Entity Retrieval
+        │                     │                     │
+        └─────────────────────┼─────────────────────┘
+                              ▼
+                     Candidate Retrieval
+                              │
+                              ▼
+                   Quality Intelligence
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+           Ranking        Spam/Safety      Diversity
+              │               │               │
+              └───────────────┼───────────────┘
+                              ▼
+                       Result Assembly
+                              │
+          ┌───────────────────┼──────────────────┐
+          ▼                   ▼                  ▼
+       Web Results          AI Search          Verticals
+                              │
+                       Evidence Layer
+                              │
+                       Citation Layer
+                              │
+                         Final Results
+```
+
+Crawler/indexing infrastructure:
+
+```text
+URL Discovery
+      ↓
+URL Frontier
+      ↓
+Scheduler
+      ↓
+Fetch Workers
+      ↓
+HTML / PDF / Document Processing
+      ↓
+Canonicalization
+      ↓
+Duplicate Detection
+      ↓
+Content Quality Analysis
+      ↓
+Entity Extraction
+      ↓
+Link Graph
+      ↓
+Search Index
+```
+
+---
+
+# 4. WEB CRAWLER
+
+Build a real distributed crawler.
+
+## Required components
+
+### URL Frontier
+
+Maintain:
+
+* URL
+* domain
+* priority
+* discovery source
+* last crawl
+* next crawl
+* HTTP status
+* crawl frequency
+* change frequency
+* robots state
+* sitemap state
+* content hash
+
+### Crawler capabilities
+
+Support:
+
+* HTTP/HTTPS
+* redirects
+* compressed responses
+* HTML
+* PDF
+* JSON
+* XML
+* RSS/Atom
+* sitemap.xml
+* robots.txt
+* canonical tags
+* hreflang
+* structured data
+* OpenGraph
+* schema.org
+
+### Crawl controls
+
+Implement:
+
+* domain throttling
+* robots compliance
+* crawl-delay handling where applicable
+* exponential retry
+* retry classification
+* timeout handling
+* network failure handling
+* content-size limits
+* malicious-content isolation
+* JavaScript rendering capability for selected pages
+* adaptive recrawl frequency
+
+### Intelligent crawling
+
+Prioritize pages based on:
+
+* importance
+* inbound-link signals
+* historical update frequency
+* query demand
+* freshness requirements
+* domain authority signals
+* crawl history
+* page importance
+* sitemap priority
+
+Do not attempt indiscriminate maximum crawling.
+
+---
+
+# 5. DOCUMENT PROCESSING ENGINE
+
+Every crawled resource enters a normalized document pipeline.
+
+```text
+RAW RESOURCE
+     ↓
+Parser
+     ↓
+Content Extraction
+     ↓
+Boilerplate Removal
+     ↓
+Language Detection
+     ↓
+Metadata Extraction
+     ↓
+Canonicalization
+     ↓
+Duplicate Detection
+     ↓
+Entity Extraction
+     ↓
+Quality Analysis
+     ↓
+Classification
+     ↓
+Indexing
+```
+
+Extract:
+
+* title
+* headings
+* body text
+* author
+* publisher
+* publication date
+* modified date
+* language
+* country
+* topic
+* entities
+* links
+* anchor text
+* images
+* tables
+* citations
+* structured data
+
+---
+
+# 6. DUPLICATE AND CONTENT-CLUSTER ENGINE
+
+Do not allow repeated copies to dominate results.
+
+Detect:
+
+* exact duplicates
+* near duplicates
+* syndicated copies
+* scraped copies
+* rewritten copies
+* translated duplicates
+* content farms
+* template-only duplicates
+
+Create topic/content clusters:
+
+```text
+ONE EVENT
+│
+├── Primary source
+├── Independent reporting
+├── Analysis
+├── Community discussion
+└── Supporting documents
+```
+
+Default behavior:
+
+> Present diversity of information rather than repetitive URLs.
+
+---
+
+# 7. SEARCH INDEX
+
+Implement multiple coordinated indexes.
+
+## 7.1 Inverted index
+
+Support:
+
+* term lookup
+* phrase search
+* proximity
+* positions
+* field weighting
+* stemming
+* language analyzers
+* exact matching
+
+## 7.2 Semantic index
+
+Store embeddings for:
+
+* documents
+* paragraphs
+* titles
+* entities
+* queries
+
+Use semantic retrieval to complement lexical search.
+
+## 7.3 Entity index
+
+Store:
+
+* entity ID
+* names
+* aliases
+* type
+* relationships
+* descriptions
+* source references
+
+## 7.4 Link graph
+
+Store:
+
+```text
+source_page
+destination_page
+anchor_text
+discovery_date
+relationship_type
+```
+
+Do not use links as the only authority signal.
+
+## 7.5 Freshness index
+
+Track:
+
+* published
+* updated
+* crawled
+* materially changed
+* historical versions
+
+---
+
+# 8. QUERY UNDERSTANDING ENGINE
+
+Analyze every query.
+
+Classify:
+
+* navigational
+* informational
+* transactional
+* commercial
+* local
+* news
+* academic
+* document
+* entity
+* media
+* comparison
+* research
+
+Extract:
+
+* entities
+* locations
+* dates
+* time range
+* language
+* intent
+* exact phrases
+* exclusions
+* requested source types
+
+Example:
+
+```text
+"official Egypt company registration requirements 2026"
+
+intent = informational
+country = Egypt
+source_preference = official
+year = 2026
+```
+
+---
+
+# 9. THREE CORE SEARCH MODES
+
+## Intelligent
+
+Normal hybrid search.
+
+Uses:
+
+* lexical
+* semantic
+* entity
+* freshness
+* quality
+* diversity
+
+## Exact
+
+Strict query interpretation.
+
+For:
+
+```text
+"ISO 20022 pain.001"
+```
+
+prioritize the actual phrase and query tokens.
+
+## Hybrid
+
+Exact matches first, semantic expansion second.
+
+This should be the default advanced mode.
+
+---
+
+# 10. SEARCH MODES
+
+Provide visible search modes.
+
+```text
+Balanced
+Exact
+Latest
+Deep Research
+Official
+Academic
+Community
+News
+Local
+Shopping
+Images
+Videos
+Documents
+```
+
+Modes change retrieval and ranking behavior.
+
+Do not merely change the interface label.
+
+---
+
+# 11. ADVANCED SEARCH CONTROLS
+
+Provide an accessible control panel.
+
+```text
+Freshness
+Any time
+Past hour
+Today
+Past week
+Past month
+Past year
+Custom
+
+Source type
+Web
+Official
+Government
+Academic
+News
+Community
+Commercial
+
+Language
+Country
+Region
+
+Domain diversity
+1 result/domain
+2 results/domain
+3 results/domain
+Unlimited
+
+AI
+Auto
+On
+Off
+
+Personalization
+On
+Off
+```
+
+All controls must be usable by normal users.
+
+---
+
+# 12. RESULT DIVERSITY ENGINE
+
+Prevent one site or one content cluster from dominating.
+
+Default:
+
+> Maximum 2 prominent results from the same domain when meaningful alternatives exist.
+
+Diversity should consider:
+
+* domain
+* publisher
+* content cluster
+* source type
+* geographic origin
+* viewpoint/category differences where applicable
+
+Do not use diversity to artificially suppress highly relevant results when no legitimate alternatives exist.
+
+---
+
+# 13. SEARCH QUALITY ENGINE
+
+For each page evaluate:
+
+### Relevance
+
+Does the document actually answer the query?
+
+### Originality
+
+Is it original or copied?
+
+### Information density
+
+Does the page contain useful information?
+
+### Source quality
+
+Is the source clearly identifiable?
+
+### Evidence quality
+
+Does it support its claims?
+
+### Freshness
+
+Is the information current enough for the query?
+
+### Expertise signals
+
+Does the content demonstrate meaningful subject-matter knowledge?
+
+### Spam signals
+
+Does it exhibit manipulative search behavior?
+
+### Duplicate signals
+
+Is it substantially redundant?
+
+---
+
+# 14. SEO-SPAM DEFENSE
+
+Detect and penalize:
+
+* keyword stuffing
+* doorway pages
+* scraped content
+* mass-generated low-value pages
+* manipulative internal linking
+* link schemes
+* deceptive redirects
+* hidden text
+* duplicate networks
+* malicious pages
+* misleading metadata
+* fake structured data
+
+Do not ban sites automatically from a single weak signal.
+
+Use a multi-signal classification system.
+
+---
+
+# 15. SOURCE TRANSPARENCY
+
+Every important result should support:
+
+### Why this result?
+
+Example:
+
+```text
+WHY THIS RESULT?
+
+✓ Matches your search terms
+✓ Strong topical relevance
+✓ Recent information
+✓ Original source
+✓ Relevant supporting references
+✓ Not substantially duplicated
+```
+
+Do not expose sensitive internal ranking details or exploitable scoring formulas.
+
+Expose interpretable categories, not the full ranking model.
+
+---
+
+# 16. SOURCE PROFILE
+
+Users should be able to inspect a source.
+
+Example:
+
+```text
+SOURCE PROFILE
+
+Publisher
+Source type
+Country
+Language
+
+First indexed
+Last crawled
+Last detected update
+
+Original source
+Yes / No / Unknown
+
+Content categories
+News / Academic / Official / Commercial / Community
+
+Related primary sources
+```
+
+Do not invent trust ratings from arbitrary numbers.
+
+Use factual metadata and observable signals.
+
+---
+
+# 17. SOURCE-TYPE SEPARATION
+
+Make source categories explicit.
+
+### OFFICIAL
+
+Government, regulators, organizations, official company sources.
+
+### PRIMARY
+
+Original documents, direct announcements, filings, studies, source datasets.
+
+### NEWS
+
+Professional news publications.
+
+### ACADEMIC
+
+Research papers, journals, institutions.
+
+### COMMUNITY
+
+Forums, discussion boards, developer communities and similar sources.
+
+### COMMERCIAL
+
+Retailers, companies, marketplaces.
+
+### WEB
+
+General web pages.
+
+Users can filter by these categories.
+
+---
+
+# 18. NEWS ENGINE
+
+Create a dedicated news index.
+
+Store:
+
+* article
+* publisher
+* author
+* timestamp
+* entities
+* location
+* topic
+* source
+* language
+
+Cluster articles covering the same event.
+
+Result:
+
+```text
+EVENT CLUSTER
+
+Primary announcement
+Independent coverage
+Analysis
+Community discussion
+Related documents
+```
+
+Do not simply display repeated copies of one story.
+
+---
+
+# 19. IMAGE SEARCH
+
+Create a dedicated image index.
+
+Store:
+
+* image URL
+* source page
+* dimensions
+* format
+* alt text
+* surrounding text
+* visual embedding
+* detected entities
+* source
+* copyright/rights metadata where available
+
+Support:
+
+* text → image
+* image → similar image
+* text + visual similarity
+
+---
+
+# 20. VIDEO SEARCH
+
+Index:
+
+* title
+* description
+* channel
+* transcript where legally/technically available
+* timestamp
+* entities
+* language
+* publication date
+
+Allow searching inside indexed transcript material.
+
+---
+
+# 21. DOCUMENT SEARCH
+
+Support:
+
+* PDF
+* DOC/DOCX metadata
+* presentations
+* reports
+* technical documentation
+* public datasets
+
+Search should understand:
+
+* title
+* author
+* date
+* document type
+* sections
+* paragraphs
+* tables
+* citations
+
+---
+
+# 22. LOCAL SEARCH
+
+Create a geospatial search system.
+
+Support:
+
+* businesses
+* restaurants
+* hospitals
+* dentists
+* hotels
+* services
+* attractions
+* public institutions
+
+Store:
+
+* name
+* location
+* category
+* opening hours
+* website
+* telephone
+* source
+* structured metadata
+
+Use a dedicated local-search ranking system.
+
+---
+
+# 23. KNOWLEDGE GRAPH
+
+Build a continuously updated graph.
+
+Example:
+
+```text
+Apple Inc.
+  │
+  ├── headquarters → Cupertino
+  ├── industry → Technology
+  ├── products → iPhone
+  ├── founded → 1976
+  └── ticker → AAPL
+```
+
+Support relationships between:
+
+* companies
+* people
+* places
+* organizations
+* products
+* technologies
+* events
+* publications
+
+Every important knowledge-graph assertion should retain source provenance.
+
+---
+
+# 24. AI SEARCH
+
+AI is a layer on top of retrieval.
+
+Correct architecture:
+
+```text
+QUERY
+ ↓
+RETRIEVE
+ ↓
+RANK
+ ↓
+VERIFY
+ ↓
+CROSS-CHECK
+ ↓
+SYNTHESIZE
+ ↓
+CITE
+```
+
+Never:
+
+```text
+QUERY
+ ↓
+LLM guesses answer
+```
+
+---
+
+# 25. AI ANSWER MODES
+
+## AI Summary
+
+Compact answer supported by retrieved sources.
+
+## Compare
+
+Compare documents/entities/products/topics using retrieved evidence.
+
+## Explain
+
+Explain the retrieved information in simpler language.
+
+## Research
+
+Produce a structured research report.
+
+## Follow-up
+
+Allow the user to continue asking questions while maintaining the retrieved evidence context.
+
+---
+
+# 26. EVIDENCE-FIRST AI
+
+For every factual response:
+
+```text
+CLAIM
+ ↓
+SOURCE(S)
+ ↓
+SUPPORT STATUS
+```
+
+Support statuses:
+
+* Directly supported
+* Supported by multiple sources
+* Indirectly supported
+* Conflicting sources
+* Insufficient evidence
+
+Do not fabricate citations.
+
+Do not cite a page merely because it mentions a related topic.
+
+---
+
+# 27. SOURCE CONFLICT ENGINE
+
+If reputable sources disagree:
+
+```text
+CONFLICT DETECTED
+
+Source A:
+Claim X
+
+Source B:
+Claim Y
+
+Publication dates:
+...
+
+Primary-source status:
+...
+
+Reason for difference:
+Unknown / identified
+```
+
+The system must preserve the disagreement rather than silently choosing one claim.
+
+---
+
+# 28. DEEP RESEARCH
+
+Create a dedicated research workflow.
+
+Example:
+
+```text
+Question
+ ↓
+Query decomposition
+ ↓
+Multiple searches
+ ↓
+Source discovery
+ ↓
+Source classification
+ ↓
+Cross-checking
+ ↓
+Evidence collection
+ ↓
+Conflict detection
+ ↓
+Synthesis
+ ↓
+Citation generation
+ ↓
+Research report
+```
+
+Output:
+
+```text
+Executive summary
+Background
+Key findings
+Evidence
+Contradictions
+Comparison
+Limitations
+Sources
+```
+
+---
+
+# 29. AI ON/OFF/AUTO
+
+Make this visible.
+
+```text
+AI: AUTO
+```
+
+Options:
+
+```text
+Auto
+Always On
+Always Off
+```
+
+Never make AI unavoidable.
+
+---
+
+# 30. PRIVACY-FIRST SEARCH
+
+Provide:
+
+### Private Search
+
+* No search-history-based personalization
+* No behavioral profiling for ranking
+* No cross-search behavioral profile
+* Minimal retention
+* Clear privacy documentation
+
+### Personalized Search
+
+Optional:
+
+* history
+* saved preferences
+* language
+* preferred sources
+* search settings
+
+Users can switch modes.
+
+---
+
+# 31. PERSONALIZATION TRANSPARENCY
+
+When personalization materially affects results, provide:
+
+```text
+Personalized result
+
+Why?
+Based on:
+Language
+Region
+Saved preferences
+Search settings
+```
+
+Provide:
+
+> Turn personalization off
+
+---
+
+# 32. CLEAN SEARCH
+
+Create a dedicated:
+
+### CLEAN MODE
+
+The result page contains:
+
+* no advertising
+* no sponsored result blocks
+* no unnecessary widgets
+* no forced AI summary
+* minimal personalization
+* minimal interface clutter
+
+Focus exclusively on search results.
+
+---
+
+# 33. ADVERTISING SYSTEM
+
+Advertising must be visibly separate from organic search.
+
+Example:
+
+```text
+SPONSORED
+
+Advertisement
+Company X
+...
+
+ORGANIC RESULTS
+
+Result 1
+Result 2
+Result 3
+```
+
+Never make ads visually indistinguishable from organic results.
+
+Every advertisement should offer:
+
+> Why this ad?
+
+Keep ad ranking isolated from organic ranking.
+
+Do not allow advertisers to directly purchase organic ranking.
+
+---
+
+# 34. PUBLISHER-FIRST WEB MODEL
+
+AI results should encourage users to visit original sources.
+
+Provide:
+
+```text
+Read original source
+Open source
+Related sources
+Primary document
+```
+
+Do not optimize the system solely for keeping users inside the search engine.
+
+---
+
+# 35. RESULT PAGE DESIGN
+
+Primary layout:
+
+```text
+┌──────────────────────────────────────────────────┐
+│ Search                                           │
+│ [ user query                                ]    │
+│                                                  │
+│ Balanced   Exact   Latest   Research             │
+└──────────────────────────────────────────────────┘
+
+Filters / controls
+
+───────────────────────────────────────────────────
+
+AI ANSWER
+(optional)
+
+Evidence:
+[1] [2] [3]
+
+───────────────────────────────────────────────────
+
+TOP RESULTS
+
+Result
+Domain
+Title
+Snippet
+Source type
+Date
+Why this result?
+
+───────────────────────────────────────────────────
+
+RELATED RESULTS / CLUSTERS
+
+───────────────────────────────────────────────────
+
+RELATED QUESTIONS
+```
+
+Keep the interface clean.
+
+---
+
+# 36. RESULT COMPONENT
+
+Every result should support:
+
+```text
+Title
+URL/domain
+Snippet
+Publication/update date
+Source type
+Original/duplicate status where useful
+Why this result?
+Open source
+More options
+```
+
+Possible secondary information:
+
+* author
+* document type
+* language
+* location
+
+Do not overwhelm the default result.
+
+---
+
+# 37. SEARCH HISTORY
+
+Store history only according to user settings.
+
+Provide:
+
+* search history
+* delete one
+* delete range
+* delete all
+* pause history
+* export data
+
+---
+
+# 38. SAVED SEARCHES
+
+Allow:
+
+* saved searches
+* saved pages
+* search collections
+* custom filters
+* alerts
+
+Example:
+
+```text
+Saved Search
+
+"Egypt banking regulations"
+
+Mode: Official
+Freshness: Latest
+Language: English/Arabic
+```
+
+---
+
+# 39. SEARCH ALERTS
+
+Allow users to subscribe to a query.
+
+Example:
+
+```text
+Alert:
+"MTQ regulation"
+
+Frequency:
+Daily
+Weekly
+Immediate for major change
+```
+
+Alerts should be built from the index rather than blindly scraping individual sites.
+
+---
+
+# 40. AUTOCOMPLETE
+
+Autocomplete must understand:
+
+* previous query patterns if enabled
+* popular searches
+* entities
+* recent queries
+* query intent
+* spelling
+* language
+
+Do not allow autocomplete to become a covert advertising surface.
+
+Sponsored autocomplete must be clearly separated if it is ever introduced.
+
+---
+
+# 41. SPELLING AND QUERY REPAIR
+
+Provide:
+
+> Did you mean...
+
+But do not silently replace the query.
+
+For ambiguous queries:
+
+```text
+Search exactly
+Search related meanings
+```
+
+Preserve user control.
+
+---
+
+# 42. MULTILINGUAL SEARCH
+
+Build language-aware processing.
+
+Support:
+
+* language detection
+* transliteration
+* multilingual embeddings
+* localized ranking
+* mixed-language queries
+* Arabic
+* English
+* other languages
+
+For Arabic specifically, support:
+
+* normalization
+* diacritic handling
+* Arabic morphology-aware processing
+* Arabic/English mixed queries
+
+---
+
+# 43. SEARCH ANALYTICS
+
+Track system quality, not merely clicks.
+
+Metrics:
+
+### Retrieval
+
+* recall
+* precision
+* NDCG
+* MRR
+* query success
+
+### User experience
+
+* reformulation rate
+* result abandonment
+* source opening
+* long click
+* query completion
+
+### Quality
+
+* duplicate rate
+* spam rate
+* outdated result rate
+* source diversity
+
+### AI
+
+* citation coverage
+* groundedness
+* unsupported-claim rate
+* source agreement
+* answer usefulness
+
+Do not optimize solely for CTR.
+
+---
+
+# 44. RANKING ENGINE
+
+Ranking should be modular.
+
+Example:
+
+```text
+FinalRank =
+    LexicalRelevance
+  + SemanticRelevance
+  + EntityRelevance
+  + Freshness
+  + SourceQuality
+  + Originality
+  + AuthoritySignals
+  + QueryIntentMatch
+  + GeographicRelevance
+  + DiversityAdjustment
+  - SpamPenalty
+  - DuplicatePenalty
+```
+
+Weights must be configurable.
+
+Do not hard-code assumptions that prevent future learning-to-rank models.
+
+---
+
+# 45. LEARNING-TO-RANK
+
+Introduce ML ranking after sufficient evaluation data exists.
+
+Training data can incorporate:
+
+* relevance judgments
+* query/result interactions
+* long clicks
+* reformulations
+* explicit user feedback
+* human evaluation
+
+Do not blindly convert clicks into relevance labels.
+
+Clicks are noisy.
+
+---
+
+# 46. HUMAN SEARCH-QUALITY EVALUATION
+
+Create an evaluator framework.
+
+For sampled queries, human evaluators classify:
+
+* highly relevant
+* relevant
+* partially relevant
+* irrelevant
+* duplicate
+* misleading
+* low quality
+* outdated
+
+Use this to evaluate ranking-model changes.
+
+---
+
+# 47. SEARCH EXPERIMENTATION
+
+Build an internal experimentation framework.
+
+Allow:
+
+```text
+Ranking model A
+vs
+Ranking model B
+```
+
+Measure:
+
+* NDCG
+* query satisfaction
+* source diversity
+* harmful errors
+* spam exposure
+* reformulation rate
+* long click
+
+Every ranking release should be evaluated before production rollout.
+
+---
+
+# 48. SECURITY
+
+Implement:
+
+* crawler sandboxing
+* malware isolation
+* URL validation
+* SSRF protection
+* content-size limits
+* parser isolation
+* rate limiting
+* DDoS protection
+* search abuse prevention
+* account protection
+* API authentication
+* audit logging
+
+Never allow crawled content to execute inside trusted infrastructure without isolation.
+
+---
+
+# 49. ADMINISTRATIVE CONTROL CENTER
+
+Build an internal console for:
+
+```text
+Crawler
+Domains
+URLs
+Documents
+Indexes
+Ranking
+Spam
+AI
+Knowledge Graph
+News
+Local Search
+Users
+Ads
+System Health
+Experiments
+```
+
+Provide operational dashboards.
+
+---
+
+# 50. SEARCH ENGINE HEALTH DASHBOARD
+
+Track:
+
+* crawl throughput
+* crawl errors
+* queue depth
+* index growth
+* duplicate rate
+* spam detection
+* search latency
+* cache hit ratio
+* AI latency
+* source freshness
+* failed ingestion
+* ranking version
+* system availability
+
+---
+
+# 51. TECHNICAL ARCHITECTURE
+
+Use a service-oriented architecture that can scale independently.
+
+Suggested logical services:
+
+```text
+crawler-service
+url-frontier-service
+document-parser-service
+document-quality-service
+deduplication-service
+indexer-service
+search-service
+ranking-service
+query-understanding-service
+entity-service
+knowledge-graph-service
+news-service
+image-service
+video-service
+local-search-service
+ai-search-service
+research-service
+spam-service
+analytics-service
+advertising-service
+user-service
+privacy-service
+```
+
+These can initially share infrastructure where practical.
+
+Do not prematurely split everything into hundreds of microservices.
+
+Start modular and evolve toward distributed services as scale requires.
+
+---
+
+# 52. STORAGE ARCHITECTURE
+
+Use the right storage for each workload.
+
+### Relational database
+
+Operational metadata, users, configuration, crawl state.
+
+### Search index
+
+Lexical retrieval.
+
+### Vector index
+
+Semantic retrieval.
+
+### Object storage
+
+Raw documents and snapshots.
+
+### Graph store
+
+Links and entities.
+
+### Cache
+
+Hot queries and autocomplete.
+
+Do not force every workload into a single database.
+
+---
+
+# 53. API ARCHITECTURE
+
+Provide APIs for:
+
+```text
+/search
+/suggest
+/news
+/images
+/videos
+/documents
+/local
+/entity
+/research
+/source
+/knowledge
+```
+
+Search request should support:
+
+```text
+query
+mode
+filters
+language
+region
+freshness
+source_type
+domain
+personalization
+ai_mode
+safe_search
+```
+
+---
+
+# 54. SEARCH RESULT OBJECT
+
+Create a normalized result schema:
+
+```text
+SearchResult {
+    id
+    title
+    url
+    domain
+    snippet
+    sourceType
+    publishedAt
+    updatedAt
+    language
+    country
+    relevanceSignals
+    sourceSignals
+    clusterId
+    entityIds
+    citationData
+}
+```
+
+Do not expose sensitive internal scoring weights directly.
+
+---
+
+# 55. AI RESPONSE OBJECT
+
+Use structured output:
+
+```text
+AIResponse {
+    answer
+    claims[]
+    citations[]
+    supportingSources[]
+    conflictingSources[]
+    confidenceClass
+    generatedAt
+}
+```
+
+Each claim must reference one or more retrieved sources.
+
+---
+
+# 56. GRACEFUL FAILURE
+
+If the system cannot establish a reliable answer:
+
+Say:
+
+> "I found relevant sources, but the evidence is insufficient to provide a reliable conclusion."
+
+Do not manufacture certainty.
+
+If sources disagree:
+
+> "Sources disagree."
+
+Then show the evidence.
+
+---
+
+# 57. SAFE SEARCH
+
+Implement configurable safety filtering.
+
+Allow age-appropriate controls and content filtering.
+
+Keep safety classification separate from ordinary ranking.
+
+Do not simply bury legitimate information because it is controversial.
+
+---
+
+# 58. PRIVACY ARCHITECTURE
+
+Minimize collection.
+
+Separate:
+
+```text
+Identity
+Search activity
+Preferences
+Analytics
+Advertising
+```
+
+where technically practical.
+
+Do not use search history for advertising unless explicitly permitted by the chosen privacy model.
+
+Provide clear deletion controls.
+
+---
+
+# 59. BUSINESS MODEL
+
+Potential revenue:
+
+### Search advertising
+
+Clearly separated.
+
+### Premium research
+
+Advanced research tools.
+
+### Enterprise search
+
+Private organizational indexes.
+
+### API
+
+Search API
+News API
+Document API
+Semantic retrieval API
+
+### Enterprise knowledge search
+
+Organizations can connect:
+
+* internal documents
+* websites
+* databases
+* knowledge bases
+
+without mixing private data into public search.
+
+---
+
+# 60. ENTERPRISE SEARCH
+
+Build the same core engine so organizations can deploy:
+
+```text
+PUBLIC WEB
++
+PRIVATE COMPANY CONTENT
++
+INTERNAL KNOWLEDGE
+```
+
+with strict access control.
+
+The enterprise version must preserve document permissions during retrieval.
+
+Never expose a private document because it ranks highly.
+
+---
+
+# 61. DEVELOPMENT PHASES
+
+## PHASE 1 — Search Core
+
+Build:
+
+* crawler
+* URL frontier
+* parser
+* document normalization
+* duplicate detection
+* inverted index
+* basic ranking
+* search API
+* basic UI
+
+## PHASE 2 — Search Quality
+
+Add:
+
+* quality engine
+* spam detection
+* diversity
+* source classification
+* freshness
+* exact/hybrid search
+* result explanations
+
+## PHASE 3 — Search Verticals
+
+Add:
+
+* news
+* images
+* videos
+* documents
+* local
+* entities
+
+## PHASE 4 — Intelligence
+
+Add:
+
+* semantic search
+* knowledge graph
+* AI answers
+* evidence engine
+* source conflict detection
+* deep research
+
+## PHASE 5 — Personalization & Privacy
+
+Add:
+
+* personalized search
+* private search
+* saved searches
+* history
+* alerts
+* preference controls
+
+## PHASE 6 — Scale
+
+Add:
+
+* distributed crawling
+* distributed indexing
+* large-scale ranking
+* learning-to-rank
+* global regional infrastructure
+* massive knowledge graph
+
+---
+
+# 62. INITIAL MVP
+
+Do NOT attempt to index the entire internet initially.
+
+The MVP must successfully perform:
+
+```text
+User query
+ ↓
+Crawler-backed index
+ ↓
+Lexical retrieval
+ ↓
+Semantic retrieval
+ ↓
+Ranking
+ ↓
+Duplicate filtering
+ ↓
+Quality filtering
+ ↓
+Diversity
+ ↓
+Clean results
+```
+
+The system should already feel materially different from conventional search.
+
+---
+
+# 63. MVP DIFFERENTIATORS
+
+The first publicly testable version should already include:
+
+### 1. Clean Search
+
+### 2. Exact Search
+
+### 3. Balanced Search
+
+### 4. Why This Result?
+
+### 5. Source Type
+
+### 6. Source Profile
+
+### 7. Domain Diversity
+
+### 8. Duplicate Clustering
+
+### 9. Freshness Filters
+
+### 10. AI On/Off/Auto
+
+These are more important for differentiation than trying to launch dozens of verticals simultaneously.
+
+---
+
+# 64. DESIGN LANGUAGE
+
+The interface should be:
+
+* minimal
+* fast
+* modern
+* professional
+* information-dense without being cluttered
+* mobile-first
+* desktop optimized
+* accessible
+* keyboard-friendly
+
+Do not copy Google's visual branding.
+
+The experience should communicate:
+
+> **Control + clarity + trust + speed.**
+
+---
+
+# 65. PERFORMANCE TARGETS
+
+Establish measurable targets.
+
+### Standard search
+
+Target:
+
+> sub-second server-side retrieval where infrastructure permits.
+
+### Autocomplete
+
+Target:
+
+> near-instant response.
+
+### AI answer
+
+Should stream progressively.
+
+### Deep research
+
+Should show research progress rather than a blank loading screen.
+
+### Crawler
+
+Must support horizontally scalable workers.
+
+Measure p50, p95 and p99 latency rather than only averages.
+
+---
+
+# 66. OBSERVABILITY
+
+Every subsystem must expose:
+
+* logs
+* metrics
+* traces
+* error rates
+* latency
+* queue depth
+* health state
+
+Never log:
+
+* API secrets
+* authentication tokens
+* private user search content unless explicitly required by the chosen logging policy
+
+---
+
+# 67. ADMINISTRATIVE VERSION CONTROL
+
+Every ranking or AI system release must have:
+
+```text
+Model version
+Index version
+Ranking version
+Configuration version
+Deployment timestamp
+Evaluation results
+Rollback version
+```
+
+Allow immediate rollback.
+
+---
+
+# 68. CRITICAL IMPLEMENTATION RULE
+
+The developer must **not build a superficial search UI first and pretend the system is a search engine**.
+
+The search engine must be implemented as an actual retrieval infrastructure platform.
+
+A beautiful interface without:
+
+* crawler
+* index
+* ranking
+* quality engine
+* source system
+* evidence layer
+
+does not satisfy this specification.
+
+---
+
+# 69. IMPLEMENTATION INSTRUCTION FOR THE AI DEVELOPER
+
+Use the following instruction when implementing the platform:
+
+> Build the search engine described in this blueprint as a production-grade modular system.
+>
+> First inspect the existing project architecture, repository, database schema, infrastructure, APIs, authentication, frontend and deployment configuration.
+>
+> Do not arbitrarily destroy or replace an existing architecture.
+>
+> Extend the existing architecture where it is sound.
+>
+> Refactor only where a current implementation directly conflicts with this specification, creates a scalability/security problem, or prevents implementation of a required capability.
+>
+> Preserve working functionality.
+>
+> Implement changes incrementally.
+>
+> Every major subsystem must have clear interfaces and tests.
+>
+> Do not use mock search results in the final implementation.
+>
+> Do not build a fake crawler that only displays predefined pages.
+>
+> Do not use an external search engine as the hidden primary search backend while representing the system as its own search engine.
+>
+> External data providers may be used as supplementary sources during development or for specific specialized verticals, but the core web search architecture must be capable of operating from the platform's own crawling, indexing and ranking infrastructure.
+>
+> Implement the system in the following order:
+>
+> 1. Existing architecture audit
+> 2. Data model and storage design
+> 3. URL frontier
+> 4. crawler
+> 5. document parser
+> 6. canonicalization
+> 7. deduplication
+> 8. lexical index
+> 9. semantic index
+> 10. query understanding
+> 11. ranking
+> 12. quality engine
+> 13. spam engine
+> 14. diversity engine
+> 15. search API
+> 16. frontend
+> 17. source transparency
+> 18. search controls
+> 19. vertical search
+> 20. knowledge graph
+> 21. AI evidence engine
+> 22. deep research
+> 23. personalization
+> 24. privacy controls
+> 25. advertising isolation
+> 26. observability
+> 27. automated testing
+> 28. load testing
+> 29. security testing
+> 30. production hardening.
+>
+> Do not implement everything as one giant module.
+>
+> Maintain clear domain boundaries.
+
+---
+
+# 70. QUALITY GATES
+
+The implementation is not complete until the following are demonstrated.
+
+## Search
+
+* lexical search works
+* exact search works
+* semantic search works
+* query understanding works
+* ranking works
+
+## Quality
+
+* duplicates are clustered
+* spam is detected
+* source types are recognized
+* domain diversity works
+* freshness works
+
+## Transparency
+
+* Why This Result works
+* Source Profile works
+* citations work
+* conflicts are represented correctly
+
+## AI
+
+* AI can be disabled
+* AI answers cite retrieved sources
+* unsupported claims are detected
+* conflicting sources are represented
+* research mode works
+
+## Privacy
+
+* personalization can be disabled
+* search history can be deleted
+* private mode exists
+* retention controls work
+
+## Infrastructure
+
+* crawler scales
+* index updates incrementally
+* failed crawls retry safely
+* services expose health metrics
+* secrets are protected
+* logs do not leak credentials
+
+---
+
+# 71. FINAL PRODUCT DEFINITION
+
+The finished platform should be understood as five systems working together:
+
+```text
+             ┌─────────────────────┐
+             │   WEB SEARCH ENGINE │
+             └──────────┬──────────┘
+                        │
+        ┌───────────────┼────────────────┐
+        ▼               ▼                ▼
+   Web Index       Knowledge Graph    Verticals
+        │               │                │
+        └───────────────┼────────────────┘
+                        ▼
+                SEARCH INTELLIGENCE
+                        │
+              ┌─────────┴─────────┐
+              ▼                   ▼
+        AI SEARCH             DEEP RESEARCH
+              │                   │
+              └─────────┬─────────┘
+                        ▼
+                    USER CONTROL
+```
+
+The target product is therefore:
+
+> **An independent web search engine with its own crawling and indexing infrastructure, high-quality ranking, source transparency, user-controlled search modes, semantic retrieval, knowledge graph, specialized search verticals, privacy controls, and evidence-grounded AI research.**
+
+The key differentiation is not simply "better AI."
+
+It is:
+
+> **Better retrieval + better ranking + better transparency + better user control + responsible AI.**
+
+# 72. FIRST RELEASE ACCEPTANCE CRITERIA
+
+The first meaningful release should allow a user to:
+
+1. Enter a query.
+2. Receive results from the platform's own index.
+3. switch between Balanced, Exact and Latest.
+4. restrict results to official/academic/community/news sources.
+5. control freshness.
+6. control domain diversity.
+7. disable AI.
+8. inspect why a result appeared.
+9. inspect source metadata.
+10. see duplicate/topic clustering.
+11. receive an evidence-grounded AI summary.
+12. open the original sources.
+13. disable personalization.
+14. use a privacy-oriented search mode.
+15. search news/documents/images as those indexes become available.
+
+Everything else should build progressively on this core.

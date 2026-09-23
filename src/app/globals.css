@@ -1,0 +1,269 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* =================================================================
+   CIRKLE Search Engine — Premium Design System
+   Imported from the CIRKLE brand (gold / deep teal / rose / steel /
+   charcoal / cream). Glass morphism, aurora gradients, breathing logo.
+   ================================================================= */
+
+@theme inline {
+  /* Brand tokens are HSL triplets in :root and .dark. Tailwind v4's
+     `@theme inline` inlines the value into the generated utility, so each
+     color var must be wrapped in `hsl(...)` — otherwise the utility emits
+     an invalid color string. */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-surface: hsl(var(--surface));
+  --color-surface-elevated: hsl(var(--surface-elevated));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-gold: hsl(var(--gold));
+  --color-teal: hsl(var(--teal));
+  --color-rose: hsl(var(--rose));
+  --color-steel: hsl(var(--steel));
+  --color-charcoal: hsl(var(--charcoal));
+  --color-cream: hsl(var(--cream));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), 'Cormorant Garamond', Georgia, serif;
+  --font-arabic: var(--font-tajawal), 'Cairo', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, monospace;
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 12px);
+}
+
+:root {
+  /* CIRKLE brand palette */
+  --gold: 39 45% 57%;          /* #C2A060 — premium gold accent */
+  --teal: 195 56% 23%;         /* #1A4A5A — deep teal (PRIMARY) */
+  --rose: 351 41% 56%;         /* #B85672 — rose accent */
+  --steel: 211 30% 42%;        /* #4A7088 — steel blue */
+  --charcoal: 60 8% 9%;        /* #151515 — dark text */
+  --cream: 40 50% 98%;         /* #FDFCF9 — background */
+
+  --background: 40 50% 98%;
+  --foreground: 60 8% 9%;
+  --surface: 40 35% 96%;
+  --surface-elevated: 0 0% 100%;
+  --card: 0 0% 100%;
+  --card-foreground: 60 8% 9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 60 8% 9%;
+  --primary: 195 56% 23%;       /* deep teal — primary action color */
+  --primary-foreground: 40 50% 98%;
+  --secondary: 39 45% 57%;      /* gold — secondary accent */
+  --secondary-foreground: 60 8% 9%;
+  --accent: 351 41% 56%;        /* rose — accent / highlights */
+  --accent-foreground: 40 50% 98%;
+  --muted: 40 25% 92%;
+  --muted-foreground: 60 6% 35%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 40 50% 98%;
+  --border: 40 20% 88%;
+  --input: 40 20% 88%;
+  --ring: 195 56% 23%;
+  --radius: 1.25rem;
+
+  --glass-bg: 0 0% 100% / 0.55;
+  --glass-strong-bg: 0 0% 100% / 0.92;
+  --glass-border: 40 30% 85% / 0.6;
+  --gradient-hero: linear-gradient(135deg, hsl(195 56% 23%) 0%, hsl(211 30% 42%) 50%, hsl(351 41% 56%) 100%);
+  --gradient-gold: linear-gradient(135deg, hsl(39 45% 67%) 0%, hsl(39 45% 47%) 100%);
+  --gradient-aurora: radial-gradient(ellipse at top left, hsl(351 41% 56% / 0.35), transparent 50%), radial-gradient(ellipse at bottom right, hsl(195 56% 33% / 0.4), transparent 55%), radial-gradient(ellipse at center, hsl(39 45% 57% / 0.2), transparent 60%);
+  --gradient-mesh: conic-gradient(from 180deg at 50% 50%, hsl(195 56% 23%), hsl(351 41% 56%), hsl(39 45% 57%), hsl(211 30% 42%), hsl(195 56% 23%));
+  --gradient-card: linear-gradient(160deg, hsl(0 0% 100% / 0.8), hsl(40 35% 96% / 0.4));
+  --shadow-soft: 0 2px 10px -2px hsl(60 8% 9% / 0.06), 0 8px 30px -10px hsl(60 8% 9% / 0.08);
+  --shadow-glow: 0 0 40px hsl(39 45% 57% / 0.4);
+  --shadow-glass: 0 8px 32px hsl(195 56% 23% / 0.12);
+  --shadow-float: 0 20px 50px -15px hsl(60 8% 9% / 0.25);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --chart-1: 195 56% 33%;
+  --chart-2: 39 45% 57%;
+  --chart-3: 351 41% 56%;
+  --chart-4: 211 30% 52%;
+  --chart-5: 60 6% 45%;
+}
+
+.dark {
+  --background: 60 8% 6%;
+  --foreground: 40 50% 98%;
+  --surface: 60 8% 9%;
+  --surface-elevated: 60 8% 12%;
+  --card: 60 8% 10%;
+  --card-foreground: 40 50% 98%;
+  --popover: 60 8% 10%;
+  --popover-foreground: 40 50% 98%;
+  --primary: 39 45% 57%;        /* gold becomes primary in dark mode */
+  --primary-foreground: 60 8% 9%;
+  --secondary: 195 56% 33%;
+  --secondary-foreground: 40 50% 98%;
+  --accent: 351 41% 56%;
+  --accent-foreground: 40 50% 98%;
+  --muted: 60 6% 16%;
+  --muted-foreground: 40 15% 65%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 40 50% 98%;
+  --border: 60 6% 18%;
+  --input: 60 6% 18%;
+  --ring: 39 45% 57%;
+  --glass-bg: 60 8% 10% / 0.55;
+  --glass-strong-bg: 60 8% 10% / 0.92;
+  --glass-border: 39 45% 57% / 0.15;
+  --gradient-hero: linear-gradient(135deg, hsl(195 56% 18%) 0%, hsl(211 30% 25%) 50%, hsl(351 41% 36%) 100%);
+  --gradient-aurora: radial-gradient(ellipse at top left, hsl(351 41% 56% / 0.25), transparent 50%), radial-gradient(ellipse at bottom right, hsl(195 56% 43% / 0.3), transparent 55%), radial-gradient(ellipse at center, hsl(39 45% 57% / 0.15), transparent 60%);
+  --gradient-card: linear-gradient(160deg, hsl(60 8% 14% / 0.8), hsl(60 8% 8% / 0.4));
+  --shadow-soft: 0 2px 10px -2px hsl(0 0% 0% / 0.4), 0 8px 30px -10px hsl(0 0% 0% / 0.5);
+  --shadow-glow: 0 0 50px hsl(39 45% 57% / 0.35);
+  --shadow-glass: 0 8px 32px hsl(0 0% 0% / 0.4);
+  --shadow-float: 0 20px 50px -15px hsl(0 0% 0% / 0.6);
+  --chart-1: 195 56% 43%;
+  --chart-2: 39 45% 67%;
+  --chart-3: 351 41% 66%;
+  --chart-4: 211 30% 62%;
+  --chart-5: 60 6% 65%;
+}
+
+@layer base {
+  :root { --text-scale: 1; }
+  * { border-color: hsl(var(--border)); }
+  html { -webkit-font-smoothing: antialiased; font-size: calc(16px * var(--text-scale)); }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+  }
+  h1, h2, h3, .font-display {
+    font-family: var(--font-fraunces), 'Cormorant Garamond', Georgia, serif;
+    letter-spacing: -0.02em;
+  }
+  .font-arabic { font-family: var(--font-tajawal), 'Cairo', sans-serif; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.3); border-radius: 9999px; }
+  ::selection { background: hsl(var(--gold) / 0.25); }
+}
+
+@layer components {
+  .glass {
+    background: hsl(var(--glass-bg));
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid hsl(var(--glass-border));
+  }
+  .glass-strong {
+    background: hsl(var(--glass-strong-bg));
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border: 1px solid hsl(var(--glass-border));
+  }
+  .gradient-text { background: var(--gradient-hero); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-text-gold { background: var(--gradient-gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .aurora-bg { background-image: var(--gradient-aurora); }
+  .bg-gradient-hero { background-image: var(--gradient-hero); }
+  .bg-gradient-gold { background-image: var(--gradient-gold); }
+  .bg-gradient-aurora { background-image: var(--gradient-aurora); }
+  .bg-gradient-mesh { background: var(--gradient-mesh); }
+  .bg-gradient-card { background-image: var(--gradient-card); }
+  .shadow-soft { box-shadow: var(--shadow-soft); }
+  .shadow-glass { box-shadow: var(--shadow-glass); }
+  .shadow-float { box-shadow: var(--shadow-float); }
+  .shadow-glow { box-shadow: var(--shadow-glow); }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { scrollbar-width: none; }
+  .text-gold { color: hsl(var(--gold)); }
+  .text-teal { color: hsl(var(--teal)); }
+  .text-rose { color: hsl(var(--rose)); }
+  .text-steel { color: hsl(var(--steel)); }
+  .text-cream { color: hsl(var(--cream)); }
+  .text-charcoal { color: hsl(var(--charcoal)); }
+  .bg-gold { background-color: hsl(var(--gold)); }
+  .bg-teal { background-color: hsl(var(--teal)); }
+  .bg-rose { background-color: hsl(var(--rose)); }
+  .bg-steel { background-color: hsl(var(--steel)); }
+  .bg-charcoal { background-color: hsl(var(--charcoal)); }
+  .bg-cream { background-color: hsl(var(--cream)); }
+  .border-gold { border-color: hsl(var(--gold)); }
+}
+
+@layer utilities {
+  .animate-breathe { animation: cirkleBreathe 2.5s ease-in-out infinite; }
+  @keyframes cirkleBreathe {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+  }
+  .animate-orb-float { animation: cirkleOrbFloat 6s ease-in-out infinite; }
+  @keyframes cirkleOrbFloat {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-12px) scale(1.05); }
+  }
+  .animate-pulse-glow { animation: cirklePulseGlow 2.5s ease-in-out infinite; }
+  @keyframes cirklePulseGlow {
+    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.5); }
+    50% { box-shadow: 0 0 0 16px hsl(var(--primary) / 0); }
+  }
+  .animate-spin-slow { animation: spin 20s linear infinite; }
+
+  /* --- CIRKLE logo: 3 orbiting circles, each rotating 360° -------------
+     Three concentric gold rings. Each ring carries a glowing dot on its
+     perimeter. The dots orbit the center at different speeds + directions
+     for a dynamic, premium feel. `transform-box: view-box` ensures the
+     rotation pivot is the SVG's own (32, 32) center in user units. */
+  .cirkle-orbit {
+    transform-box: view-box;
+    transform-origin: 32px 32px;
+  }
+  .cirkle-orbit-1 { animation: cirkleOrbitSpin 4s linear infinite; }
+  .cirkle-orbit-2 { animation: cirkleOrbitSpin 6s linear infinite reverse; }
+  .cirkle-orbit-3 { animation: cirkleOrbitSpin 8s linear infinite; }
+  @keyframes cirkleOrbitSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  /* Subtle whole-logo breathing scale + opacity (the mark feels alive). */
+  .cirkle-mark-breathe {
+    transform-box: view-box;
+    transform-origin: 32px 32px;
+    animation: cirkleMarkBreathe 3s ease-in-out infinite;
+  }
+  @keyframes cirkleMarkBreathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+  }
+}
+
+/* Accessibility: respect reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

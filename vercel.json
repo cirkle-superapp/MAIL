@@ -1,0 +1,35 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "prisma generate && next build",
+  "regions": ["iad1"],
+  "functions": {
+    "src/app/api/search/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/search/ai/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/search/stream/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/seed/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/research/route.ts": {
+      "maxDuration": 600
+    },
+    "src/app/api/reindex/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/inngest/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/page-summary/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "env": {
+    "NEXT_PUBLIC_APP_NAME": "CIRKLE Search"
+  }
+}

@@ -1,0 +1,193 @@
+// Next-Generation Search Engine — Prisma schema
+// Implements: crawl queue, document store, inverted index, links, entities,
+// query/autocomplete logs, search history, sponsored ads (clearly separated
+// from organic ranking).
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// CRAWLER / URL FRONTIER
+// ---------------------------------------------------------------------------
+
+/// A URL scheduled for (re)crawling. Implements the URL Frontier from §4.
+model CrawlQueue {
+  id            String   @id @default(cuid())
+  url           String   @unique
+  domain        String
+  priority      Int      @default(0) // higher = crawled sooner
+  discoverySrc  String   @default("seed") // seed | sitemap | extracted | suggestion
+  status        String   @default("pending") // pending | fetching | done | error | skipped
+  httpStatus    Int?
+  robotsAllowed Boolean  @default(true)
+  crawlDelayMs  Int      @default(1000)
+  retryCount    Int      @default(0)
+  lastCrawledAt DateTime?
+  nextCrawlAt   DateTime?
+  contentHash   String?
+  addedAt       DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status, nextCrawlAt])
+  @@index([domain])
+}
+
+// ---------------------------------------------------------------------------
+// DOCUMENT STORE (parsed web pages)
+// ---------------------------------------------------------------------------
+
+/// A normalized, indexed web document. §5 document processing pipeline output.
+model Document {
+  id              String   @id @default(cuid())
+  url             String   @unique
+  canonicalUrl    String?
+  domain          String
+  title           String
+  snippet         String // short extract shown in SERP
+  contentText     String // full extracted body text
+  headings        String  @default("[]") // JSON: [{level, text}]
+  links           String  @default("[]") // JSON: [{url, anchor}]
+  metaDescription String?
+  metaKeywords    String?
+  ogType          String?
+  ogImage          String?
+
+  sourceType      String   @default("WEB") // OFFICIAL|GOVERNMENT|ACADEMIC|NEWS|COMMUNITY|COMMERCIAL|PRIMARY|WEB
+  language        String   @default("en")
+  country         String?
+  author          String?
+  publisher       String?
+
+  publishedAt     DateTime?
+  updatedAt      DateTime?
+  crawledAt      DateTime @default(now())
+
+  contentHash     String?  // sha1 of normalized text — for exact dedup
+  simhash        String?  // for near-duplicate detection
+  clusterId      String?  // content/topic cluster key
+
+  qualityScore    Float    @default(0.5) // 0..1 — info density, originality, etc.
+  spamScore       Float    @default(0) // 0..1 — manipulative signals
+  isOriginal     Boolean  @default(true)
+  wordCount       Int      @default(0)
+
+  indexTerms      String?  // JSON-encoded list of {t: term, f: freq, p: positions} (compact inverted postings for this doc)
+
+  createdAt       DateTime @default(now())
+  updatedAtDoc    DateTime @updatedAt
+
+  @@index([domain])
+  @@index([sourceType])
+  @@index([clusterId])
+  @@index([contentHash])
+  @@index([crawledAt])
+}
+
+// ---------------------------------------------------------------------------
+// LINK GRAPH (§7.4)
+// ---------------------------------------------------------------------------
+
+model Link {
+  id             String   @id @default(cuid())
+  sourceUrl      String
+  targetUrl      String
+  anchorText     String   @default("")
+  relationship   String   @default("follow") // follow|nofollow|ugc|sponsor
+  discoveredAt   DateTime @default(now())
+
+  @@index([sourceUrl])
+  @@index([targetUrl])
+}
+
+// ---------------------------------------------------------------------------
+// ENTITY / KNOWLEDGE GRAPH (§7.3, §23)
+// ---------------------------------------------------------------------------
+
+model Entity {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  aliases      String   @default("[]") // JSON array
+  type         String   // ORGANIZATION|PERSON|PLACE|PRODUCT|TECHNOLOGY|EVENT|PUBLICATION
+  description   String?
+  sourceRefs   String   @default("[]") // JSON: [{url, snippet}]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// SEARCH HISTORY & QUERY LOGS (§37, §40)
+// ---------------------------------------------------------------------------
+
+/// A user's search session — only stored if personalization is enabled.
+/// When private mode is on, nothing is persisted.
+model SearchHistory {
+  id           String   @id @default(cuid())
+  query        String
+  mode         String   @default("BALANCED")
+  filters      String   @default("{}") // JSON of applied filters
+  resultCount  Int      @default(0)
+  searchedAt   DateTime @default(now())
+  sessionId    String?  // anonymous session token; null in private mode
+
+  @@index([sessionId])
+  @@index([searchedAt])
+}
+
+/// Aggregated query statistics — used for autocomplete popularity. NOT tied
+/// to any user identity (we only store a hash of the normalized query).
+model QueryLog {
+  id           String   @id @default(cuid())
+  query        String   @unique
+  normalized    String   @unique
+  frequency    Int      @default(1)
+  lastUsedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([normalized])
+}
+
+// ---------------------------------------------------------------------------
+// ADVERTISING (§33) — strictly isolated from organic ranking
+// ---------------------------------------------------------------------------
+
+/// Sponsored results. Never mixed with organic. Each ad carries a
+/// "Why this ad?" explanation. Advertiser cannot buy organic ranking.
+model SponsoredAd {
+  id           String   @id @default(cuid())
+  advertiser    String
+  headline     String
+  displayUrl    String
+  targetUrl    String
+  snippet      String
+  keywords     String   @default("[]") // JSON: matched keywords
+  whyAdReason  String   // human-readable explanation
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([active])
+}
+
+// ---------------------------------------------------------------------------
+// SAVED SEARCHES (§38) — opt-in
+// ---------------------------------------------------------------------------
+
+model SavedSearch {
+  id           String   @id @default(cuid())
+  query        String
+  mode         String   @default("BALANCED")
+  filters      String   @default("{}")
+  frequency    String   @default("weekly") // immediate|daily|weekly
+  createdAt    DateTime @default(now())
+  sessionId    String?
+
+  @@index([sessionId])
+}
