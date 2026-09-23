@@ -20,7 +20,7 @@ import { generateResearchReport } from '@/lib/search'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 600 // Deep research can take a while (LLM calls).
+export const maxDuration = 300 // Vercel hobby plan limit
 
 export async function POST(req: NextRequest) {
   let body: any
