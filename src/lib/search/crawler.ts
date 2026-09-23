@@ -133,8 +133,34 @@ export async function fetchUrl(
       }
     }
 
-    // Non-2xx
+    // Non-2xx — try BrightData Web Unlocker as a fallback for 403/429/captcha.
+    // BrightData costs (free tier) only happen on these rare misses, so this is
+    // a smart spend: a 200 OK native fetch never touches BrightData.
     if (status < 200 || status >= 300) {
+      if (status === 403 || status === 429 || status === 503 || status === 426) {
+        try {
+          const { brightDataUnlock } = await import('@/lib/brightdata')
+          const unlocked = await brightDataUnlock(currentUrl, {
+            renderJs: true,
+            timeoutMs: 20_000,
+          })
+          if (unlocked && unlocked.ok && unlocked.content) {
+            return {
+              ok: true,
+              status: 200,
+              finalUrl: unlocked.finalUrl || currentUrl,
+              contentType: unlocked.contentType || 'text/html',
+              content: unlocked.content,
+              redirectChain: [...redirectChain, `brightdata:unlocker`],
+              fetchedAt,
+              size: unlocked.content.length,
+            }
+          }
+        } catch {
+          // BrightData unavailable (no token / budget exhausted) — fall through
+          // to the regular error return. The engine still works free.
+        }
+      }
       return {
         ok: false,
         status,

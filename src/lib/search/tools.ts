@@ -573,8 +573,40 @@ function runMathTool(expr: string): InstantAnswer | null {
 // Used ONLY when the local index returns 0 results AND the query looks like
 // it needs fresh web content. The web_search SDK function returns live URLs +
 // snippets; we surface them as supplementary results (clearly labeled).
+//
+// 3-tier fallback (highest quality first, lowest cost last):
+//   1. BrightData SERP API (premium Google SERP — when BRIGHTDATA_TOKEN is
+//      set + budget allows; falls back to (2) when budget is exhausted)
+//   2. DuckDuckGo HTML search (free, no key)
+//   3. (no further fallback — return [])
+//
+// The BrightData tier is OPTIONAL — when no token is configured, the engine
+// works exactly as before, on the free DuckDuckGo tier.
 
 export async function runLiveWebSearch(query: string): Promise<LiveWebResult[]> {
+  // Tier 1: BrightData SERP API (premium).
+  try {
+    const { brightDataSerp, isBrightDataSerpWorthIt } = await import('../brightdata')
+    // Only spend BrightData budget on queries where it actually adds value.
+    // Pure-math / unit-conversion / weather / time queries have their own
+    // instant-answer tools — don't waste budget on them.
+    if (isBrightDataSerpWorthIt(query, 0)) {
+      const serpResults = await brightDataSerp(query, { num: 8 })
+      if (serpResults && serpResults.length > 0) {
+        return serpResults.map((r) => ({
+          title: r.title,
+          url: r.url,
+          snippet: r.snippet,
+          domain: r.domain,
+          sourceType: r.sourceType,
+        }))
+      }
+    }
+  } catch {
+    // BrightData module unavailable — fall through to DuckDuckGo.
+  }
+
+  // Tier 2: DuckDuckGo HTML search (always free, always available).
   try {
     const { webSearch } = await import('../llm')
     const results = await webSearch(query, 8)

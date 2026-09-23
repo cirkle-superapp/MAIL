@@ -20,6 +20,7 @@ import * as React from 'react'
 import { ShieldCheck, ExternalLink } from 'lucide-react'
 import { CirkleLogo } from './CirkleLogo'
 import { IndexStatusBar } from './IndexStatusBar'
+import { BrightDataBadge } from './BrightDataBadge'
 
 const LINK_COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
   {
@@ -118,7 +119,10 @@ export function Footer() {
             © {new Date().getFullYear()} CIRKLE — an independent, open web
             search engine.
           </p>
-          <IndexStatusBar />
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <BrightDataBadge />
+            <IndexStatusBar />
+          </div>
         </div>
       </div>
     </footer>
