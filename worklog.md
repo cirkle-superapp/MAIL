@@ -1195,3 +1195,99 @@ Stage Summary:
   - `src/lib/search/crawler.ts` (modified — Web Unlocker fallback in fetchUrl)
   - `src/lib/search/tools.ts` (modified — 3-tier live-web fallback: BrightData → DuckDuckGo → [])
   - `.env` (modified — added 7 BrightData env vars + operator setup comments)
+
+---
+Task ID: 73
+Agent: orchestrator (COO/CTO/scraping-expert — BrightData LIVE credentials integration)
+Task: User provided real BrightData credentials + a snapshot ID (`sd_muekxkd22g0pfuwdnd`). Configure everything end-to-end fully automatically — fetch the snapshot, ingest into the index, and make the engine use BrightData's Scraping Browser for live scrapes.
+
+Work Log:
+- User-provided credentials:
+  - API Token (Bearer): `9a86a02e-d8a8-46a0-82d1-6cfbdbbc1250`
+  - Account: `brd-customer-hl_462d32fd`
+  - Zone name: `cirkle` (Scraping Browser zone — not a SERP API zone)
+  - Zone password: `u6hk8h7m0dgo`
+  - Scraping Browser (Puppeteer/Playwright over wss): `wss://brd-customer-hl_462d32fd-zone-cirkle:<pw>@brd.superproxy.io:9222`
+  - Selenium endpoint: `https://brd-customer-hl_462d32fd-zone-cirkle:<pw>@brd.superproxy.io:9515`
+  - Snapshot ID to test: `sd_muekxkd22g0pfuwdnd`
+
+- **Inspected the snapshot endpoint directly via curl** (`GET https://api.brightdata.com/datasets/v3/snapshot/sd_muekxkd22g0pfuwdnd`). The snapshot is a single-page scrape of `https://nowlun.com/` with these fields:
+  - `markdown` (~170KB rendered page content as Markdown)
+  - `html2text` (page as plain text)
+  - `page_html` (full rendered HTML after JS execution)
+  - `page_title` ("Nowlun - Online Freight Shipping Platform")
+  - `url` (source URL)
+  - `timestamp`
+  - `input` (original scrape input)
+  → This is the shape returned by BrightData's **Scraping Browser** snapshot endpoint.
+
+- **Discovered the user's BrightData account doesn't have a SERP API zone or a Web Unlocker HTTP API zone** — only a Scraping Browser zone. Adapted the integration accordingly:
+  - Replaced the placeholder `brightDataUnlock` (Web Unlocker HTTP API) with a real `brightDataScrapingBrowserFetch` that uses `puppeteer-core` to connect to BrightData's remote Chrome over wss.
+  - Replaced the placeholder `brightDataDatasetTrigger` (which used the wrong endpoint) with the real `/datasets/v3/trigger` + `/datasets/v3/snapshot/<id>` endpoints.
+  - `brightDataSerp` is now a no-op that returns null (no SERP API zone configured). The engine falls back to DuckDuckGo for live-web results — that's still free + works.
+
+- **Tested outbound connectivity**:
+  - `brd.superproxy.io:9222` (wss port) — CONNECT_OK
+  - `brd.superproxy.io:9515` (Selenium port) — CONNECT_OK
+
+- **Installed `puppeteer-core@25.12.0`** (lightweight — no local Chromium download; we drive BrightData's remote browser).
+
+- **Updated `.env` with the real credentials**:
+  - `BRIGHTDATA_TOKEN=9a86a02e-d8a8-46a0-82d1-6cfbdbbc1250`
+  - `BRIGHTDATA_SBR_WSS=wss://brd-customer-hl_462d32fd-zone-cirkle:u6hk8h7m0dgo@brd.superproxy.io:9222`
+  - `BRIGHTDATA_SELENIUM=https://brd-customer-hl_462d32fd-zone-cirkle:u6hk8h7m0dgo@brd.superproxy.io:9515`
+  - Kept all the free-tier circuit-breaker caps (daily 5, monthly 25).
+
+- **Refactored `src/lib/brightdata.ts`** (rewrote, ~600 lines):
+  - `brightDataScrapingBrowserFetch(url, opts)` — uses `puppeteer.connect({browserWSEndpoint: BRIGHTDATA_SBR_WSS})`, opens a new page, blocks images/CSS/fonts/media for speed, navigates with `waitUntil: 'networkidle2'`, returns the fully-rendered HTML + final URL.
+  - `brightDataUnlock = brightDataScrapingBrowserFetch` (alias — used by crawler.ts).
+  - `brightDataSnapshotFetch(snapshotId)` — GET `/datasets/v3/snapshot/<id>`, returns `{url, title, markdown, html2text, pageHtml, timestamp}`.
+  - `brightDataDatasetTrigger(datasetId, opts)` — POST `/datasets/v3/trigger`.
+  - `brightDataSerp(...)` — returns null (no SERP zone).
+  - `getBudgetSnapshot()` now also reports `scrapingBrowserConfigured` + `seleniumConfigured`.
+  - The BudgetGuard + daily/monthly caps + disable-on-auth-fail window + persistent file counters all preserved from Task 72.
+
+- **Updated `src/lib/search/crawler.ts`** — comment block updated to reflect the real Scraping Browser (Puppeteer over wss) instead of the Web Unlocker HTTP API. Code path unchanged.
+
+- **Built new API surface**:
+  - `GET /api/brightdata/snapshot/[id]?ingest=1` — fetches an existing snapshot + (optionally) runs it through `indexDocumentFromCrawl()` to ingest into the Document index.
+  - `POST /api/brightdata/scrape` — triggers a one-off Scraping Browser fetch of any URL + (optionally) ingests.
+  - `GET /api/brightdata/status` — unchanged, but now reports `scrapingBrowserConfigured` + `seleniumConfigured` booleans.
+  - `POST /api/brightdata/datasets` — unchanged (still uses `brightDataDatasetTrigger`).
+  - `POST /api/brightdata/serp` — still returns `brightdata_unavailable` (no SERP zone).
+
+- **LIVE VERIFICATION (real BrightData API calls)**:
+  1. `GET /api/brightdata/snapshot/sd_muekxkd22g0pfuwdnd?ingest=1` → returned `ok: true`, `url: https://nowlun.com/`, `title: "Nowlun - Online Freight Shipping Platform"`, `pageHtmlBytes: 99108`, `ingested: { docId: "cmuelbu0x0002n3w201cqb1ju" }`. Budget after: 1/5 daily, 1/25 monthly, 1 successful call, 0 fallbacks. Endpoint latency: 2.9s (fetch from BrightData + parse + index pipeline).
+  2. `POST /api/brightdata/scrape` with `{url:"https://example.com", ingest:true}` → returned `ok: true`, `status: 200`, `finalUrl: https://example.com/`, `htmlBytes: 559`, `ingested: { docId: "cmuelc8fp001rn3w201cqb1ju" }` (the example.com doc). Budget after: 2/5 daily, 2/25 monthly, 2 successful calls, 0 fallbacks. Endpoint latency: 8.2s (wss connect + render + ingest).
+  3. `POST /api/search` with `{query:"nowlun freight shipping", mode:"BALANCED"}` → returned the new nowlun.com doc as the **top result**.
+  4. `POST /api/search` EXACT mode with `{query:"example domain"}` → returned example.com as the **only result** (1 hit). The BrightData Scraping Browser → indexer → BM25 retrieval pipeline works end-to-end.
+
+- **Agent Browser self-verification (live)**:
+  - Home page loads (200 OK). Title: "CIRKLE — Search the open web. Decide for yourself."
+  - Footer BrightData badge now shows **"BrightData-ready"** (green) — was "Free-tier mode" before credentials were configured.
+  - IndexStatusBar shows **"33 docs · 29 domains"** (was 31 docs / 27 domains before this task — exactly +2 docs from the BrightData ingests: nowlun.com + example.com). "Last crawl 1 minute ago."
+  - Hovered the BrightData badge → tooltip shows: State = BrightData-ready, Daily budget = 2/5, Monthly budget = 2/25, Successful calls = 2, Fallbacks to free tier = 0, Zero-cost guarantee enforced.
+  - Searched "nowlun freight" from the UI → 1 result in 0.58 seconds, top hit is the nowlun.com page with the BrightData-ingested markdown snippet. Query Understanding → BM25 → Ranking → Diversity → AI Synthesis pipeline runs cleanly. "People also ask" generates 3 questions.
+  - Browser console: only Fast Refresh / HMR (clean). Page errors: none.
+  - Sticky footer: footerBottom=1045 = pageH=1045, `footerAtBottom: true`. "Natural Push on Overflow" satisfied.
+  - Lint: 0 errors, 0 warnings.
+
+Stage Summary:
+- **REAL BrightData integration LIVE end-to-end.** Two BrightData API calls succeeded, two new documents were ingested, and they're searchable from the user-facing UI as the top results for their queries.
+- **Zero-cost guarantee PRESERVED**: budget counter went from 0/5 to 2/5 daily, 0/25 to 2/25 monthly. With 5/day + 25/month hard caps, the engine will silently fall back to the free stack (DuckDuckGo + native fetch + RSS) when caps are hit. No bill is possible.
+- **Engine now has 3 scraping tiers** for incoming content:
+  1. BrightData Scraping Browser (premium — Puppeteer over wss, JS rendering, residential proxies) — used for 403/429/SPA fallbacks + on-demand scrapes.
+  2. BrightData datasets v3 snapshot API (premium — for bulk ingestion of pre-triggered snapshots).
+  3. Free stack (native fetch + DuckDuckGo HTML + RSS feeds) — used for everything else, and as the graceful fallback when BrightData budget is exhausted.
+- **Files produced/modified**:
+  - `src/lib/brightdata.ts` (rewrote — real datasets v3 API + Scraping Browser via puppeteer-core)
+  - `src/app/api/brightdata/snapshot/[id]/route.ts` (new — GET existing snapshot + ingest)
+  - `src/app/api/brightdata/scrape/route.ts` (new — POST on-demand Scraping Browser scrape + ingest)
+  - `src/app/api/brightdata/status/route.ts` (modified — added scrapingBrowserConfigured + seleniumConfigured booleans)
+  - `src/lib/search/crawler.ts` (modified — comment block + redirect chain tag updated to reflect Scraping Browser)
+  - `.env` (modified — added BRIGHTDATA_SBR_WSS + BRIGHTDATA_SELENIUM)
+  - `package.json` + `bun.lock` (added `puppeteer-core@25.12.0`)
+- **The user can now trigger BrightData scrapes via 3 endpoints**:
+  - `GET /api/brightdata/snapshot/<id>?ingest=1` — fetch an existing snapshot + index it.
+  - `POST /api/brightdata/scrape` `{url, ingest:true}` — on-demand scrape + index.
+  - `POST /api/brightdata/datasets` `{datasetId, maxRows}` — trigger a multi-row dataset snapshot (returns immediately; poll with the snapshot endpoint).

@@ -4,48 +4,41 @@
  * Enterprise-grade scraping layer for the CIRKLE search engine, powered by
  * BrightData (https://brightdata.com).
  *
- * ZERO-COST GUARANTEE — DESIGN PRINCIPLES
+ * REAL ACCOUNT INTEGRATION (verified end-to-end):
+ *   - Datasets v3 API:   https://api.brightdata.com/datasets/v3/snapshot/<id>
+ *                        https://api.brightdata.com/datasets/v3/trigger
+ *   - Scraping Browser:  wss://brd-customer-...-zone-cirkle:<pw>@brd.superproxy.io:9222
+ *                        (Puppeteer over WebSocket — drives a remote headless
+ *                         Chrome for JS-rendered pages)
+ *   - Selenium endpoint: https://brd-customer-...-zone-cirkle:<pw>@brd.superproxy.io:9515
+ *
+ * ZERO-COST GUARANTEE — DESIGN PRINCIPLES (unchanged from previous task)
  * ---------------------------------------
  *   1. NO BILL EVER NEEDED. Every BrightData call flows through a hard
  *      circuit-breaker (`BudgetGuard`) that enforces a daily and a monthly
- *      ceiling. When either ceiling is hit, the client throws `BudgetExhausted`
- *      and callers MUST gracefully fall back to the existing free stack:
+ *      ceiling. When either ceiling is hit, the client throws + callers MUST
+ *      gracefully fall back to the existing free stack:
  *        - crawler.ts native fetch
  *        - DuckDuckGo HTML search (../llm.ts → webSearch())
  *        - RSS feeds
- *      The engine NEVER returns 500 because of a BrightData failure — it
- *      always has a free path.
+ *      The engine NEVER returns 500 because of a BrightData failure.
  *
  *   2. TOKEN-OPTIONAL. If `BRIGHTDATA_TOKEN` is unset in the environment, the
  *      client is in "shadow mode": every public function returns null/[] and
- *      logs nothing. The engine still works on the free stack. This lets
- *      users run the engine with zero signup.
+ *      the engine still works on the free stack.
  *
- *   3. FREE TIER FIRST. BrightData's documented free tier is 5 CRAWLER
- *      requests/day + 25 SERP API requests/month on the standard plan (the
- *      free trial gives more, but we treat it conservatively). Defaults:
- *        - daily SERP cap: 5 (well within free tier)
- *        - monthly SERP cap: 25 (exactly the free tier)
- *        - daily Web Unlocker cap: 5
- *        - monthly Web Unlocker cap: 30
- *      These numbers can be overridden via env: BRIGHTDATA_DAILY_CAP,
- *      BRIGHTDATA_MONTHLY_CAP. If a user upgrades their plan, they can raise
- *      the caps.
+ *   3. FREE TIER FIRST. Conservative caps:
+ *        - daily Scraping Browser / dataset calls cap: 5
+ *        - monthly Scraping Browser / dataset calls cap: 25
+ *      Override via BRIGHTDATA_DAILY_CAP / BRIGHTDATA_MONTHLY_CAP.
  *
- *   4. PERSISTENT BUDGET. The counters persist in a small JSON file under
- *      `/tmp/cirkle-brightdata-budget.json` (or OS temp dir) so they survive
- *      process restarts + Vercel serverless warmings (per-instance). Each
- *      cold boot reads the file; warm invocations use the in-memory cache.
+ *   4. PERSISTENT BUDGET. Counters persist in a small JSON file under the OS
+ *      temp dir so they survive process restarts. Reads are always-from-disk
+ *      (serverless-safe across module contexts).
  *
  *   5. AUTONOMOUS RECOVERY. If a BrightData endpoint returns 401/403/429,
- *      the client marks itself "disabled for N minutes" (default 60) and
- *      short-circuits subsequent calls without hitting the network. This
- *      avoids hammering the API when the token is bad or the quota is gone.
- *
- * ENDPOINTS USED (all documented at https://docs.brightdata.com):
- *   - SERP API:     https://api.brightdata.com/serp/req  (bearer token + zone)
- *   - Web Unlocker: https://api.brightdata.com/dca/web_unlocker  (POST body)
- *   - Datasets API: https://api.brightdata.com/dca/dataset  (trigger snapshot)
+ *      the kind is marked "disabled for N minutes" (default 60) and
+ *      short-circuits subsequent calls without hitting the network.
  *
  * All BrightData calls are server-side only — never imported by client code.
  * -----------------------------------------------------------------------------
@@ -58,6 +51,11 @@ import * as os from 'node:os'
 // --- Configuration ---------------------------------------------------------
 
 const BRIGHTDATA_TOKEN = process.env.BRIGHTDATA_TOKEN || ''
+const BRIGHTDATA_SBR_WSS = process.env.BRIGHTDATA_SBR_WSS || ''
+const BRIGHTDATA_SELENIUM = process.env.BRIGHTDATA_SELENIUM || ''
+
+// Legacy zone names — kept for backward compat with my old code; not used by
+// the real Scraping Browser (which authenticates via the wss URL itself).
 const BRIGHTDATA_SERP_ZONE = process.env.BRIGHTDATA_SERP_ZONE || 'serp'
 const BRIGHTDATA_UNLOCKER_ZONE = process.env.BRIGHTDATA_UNLOCKER_ZONE || 'web_unlocker'
 const BRIGHTDATA_DATASET_ZONE = process.env.BRIGHTDATA_DATASET_ZONE || 'cirkle_datasets'
@@ -65,9 +63,8 @@ const BRIGHTDATA_DATASET_ZONE = process.env.BRIGHTDATA_DATASET_ZONE || 'cirkle_d
 const DAILY_CAP = parseInt(process.env.BRIGHTDATA_DAILY_CAP || '5', 10)
 const MONTHLY_CAP = parseInt(process.env.BRIGHTDATA_MONTHLY_CAP || '25', 10)
 
-const SERP_API_URL = 'https://api.brightdata.com/serp/req'
-const UNLOCKER_API_URL = 'https://api.brightdata.com/dca/web_unlocker'
-const DATASET_API_URL = 'https://api.brightdata.com/dca/dataset'
+const DATASET_SNAPSHOT_API = 'https://api.brightdata.com/datasets/v3/snapshot'
+const DATASET_TRIGGER_API = 'https://api.brightdata.com/datasets/v3/trigger'
 
 const DISABLE_ON_AUTH_FAIL_MS = parseInt(
   process.env.BRIGHTDATA_DISABLE_MINUTES || '60',
@@ -160,10 +157,6 @@ function loadState(): BudgetState {
 
 function persistState(): void {
   if (!_state) return
-  // Write synchronously — the file is small (~1KB) and a debounce introduces
-  // races when GET /api/brightdata/status runs in a different module context
-  // than the POST that just recorded a fallback. Sync write guarantees the
-  // status endpoint always reflects the latest counters.
   try {
     const fp = budgetFilePath()
     const dir = path.dirname(fp)
@@ -176,9 +169,6 @@ function persistState(): void {
 
 /**
  * Decide whether a BrightData call of the given kind is allowed right now.
- * Returns one of:
- *   - { allowed: true }                 — proceed with the call
- *   - { allowed: false, reason: '...' } — fall back to the free stack
  */
 export function budgetGuard(kind: 'serp' | 'unlocker' | 'dataset'): {
   allowed: boolean
@@ -230,6 +220,8 @@ function disableKind(kind: 'serp' | 'unlocker' | 'dataset', minutes: number = 60
 /** Read-only snapshot of the budget state — for /api/brightdata/status. */
 export function getBudgetSnapshot(): {
   enabled: boolean
+  scrapingBrowserConfigured: boolean
+  seleniumConfigured: boolean
   dailyCount: number
   monthlyCount: number
   dailyCap: number
@@ -246,6 +238,8 @@ export function getBudgetSnapshot(): {
   }
   return {
     enabled: !!BRIGHTDATA_TOKEN,
+    scrapingBrowserConfigured: !!BRIGHTDATA_SBR_WSS,
+    seleniumConfigured: !!BRIGHTDATA_SELENIUM,
     dailyCount: s.dailyCount,
     monthlyCount: s.monthlyCount,
     dailyCap: DAILY_CAP,
@@ -259,14 +253,16 @@ export function getBudgetSnapshot(): {
 
 // --- Type definitions ------------------------------------------------------
 
-export interface BrightDataSerpResult {
-  title: string
-  url: string
-  snippet: string
-  domain: string
-  /** Position in the SERP (1 = top organic). */
-  position: number
-  sourceType: string
+export interface BrightDataSnapshotResult {
+  ok: boolean
+  snapshotId: string
+  url: string | null
+  title: string | null
+  markdown: string | null
+  html2text: string | null
+  pageHtml: string | null
+  timestamp: string | null
+  error?: string
 }
 
 export interface BrightDataUnlockResult {
@@ -285,116 +281,21 @@ export interface BrightDataDatasetResult {
   error?: string
 }
 
-// --- SERP API --------------------------------------------------------------
+// --- Scraping Browser (Puppeteer over wss) --------------------------------
 
 /**
- * BrightData SERP API — premium search results.
- * Used as the top tier of the live-web fallback (above DuckDuckGo).
- * Returns null if budget exhausted or token missing — caller MUST fall back.
+ * Use BrightData's Scraping Browser to render + fetch a URL.
+ * Connects to the remote Chrome instance over wss (no local Chromium needed).
+ *
+ * Returns the fully rendered HTML (after JS execution), the final URL (after
+ * any client-side redirects), and the page title.
+ *
+ * Budget-aware: each call counts against the daily/monthly caps. Returns null
+ * when budget exhausted or wss not configured — caller MUST fall back.
  */
-export async function brightDataSerp(
-  query: string,
-  opts: { num?: number; country?: string; language?: string } = {},
-): Promise<BrightDataSerpResult[] | null> {
-  const guard = budgetGuard('serp')
-  if (!guard.allowed) {
-    // 'no_token' is the engine's expected default state — not a fallback.
-    // Only record a fallback when a real call was attempted but the cap
-    // blocked it (i.e., the operator HAD a token but ran out of budget).
-    if (guard.reason !== 'no_token') {
-      recordFallback('serp', guard.reason ?? 'unknown')
-    }
-    return null
-  }
-
-  const num = Math.min(opts.num ?? 10, 10) // cap at 10 — keeps spend tiny
-  const country = opts.country || 'us'
-  const language = opts.language || 'en'
-
-  try {
-    const resp = await fetch(SERP_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${BRIGHTDATA_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        zone: BRIGHTDATA_SERP_ZONE,
-        query: encodeURIComponent(query),
-        num,
-        country,
-        language,
-        // Ask for organic results only — no ads, no maps pack, no news box.
-        // This keeps the response small + cheap.
-        output_format: 'json',
-        search_engine: 'google',
-      }),
-      signal: AbortSignal.timeout(15_000),
-    })
-
-    if (resp.status === 401 || resp.status === 403) {
-      disableKind('serp', 60)
-      recordFallback('serp', `auth_${resp.status}`)
-      return null
-    }
-    if (resp.status === 429) {
-      disableKind('serp', 30)
-      recordFallback('serp', 'rate_limit')
-      return null
-    }
-    if (!resp.ok) {
-      recordFallback('serp', `http_${resp.status}`)
-      return null
-    }
-
-    const data = await resp.json()
-    // BrightData SERP API returns results under `organic` or `results` depending
-    // on the zone config. We handle both shapes + a generic array fallback.
-    const organic: any[] =
-      data?.organic ??
-      data?.results ??
-      data?.result ??
-      (Array.isArray(data) ? data : [])
-
-    const mapped: BrightDataSerpResult[] = organic.slice(0, num).map(
-      (r: any, i: number) => {
-        const url: string = r.link ?? r.url ?? r.loc ?? ''
-        let domain = ''
-        try {
-          domain = url ? new URL(url).hostname : ''
-        } catch {
-          domain = r.display_url ?? r.domain ?? ''
-        }
-        return {
-          title: r.title ?? r.headline ?? '',
-          url,
-          snippet: r.snippet ?? r.description ?? '',
-          domain,
-          position: r.position ?? i + 1,
-          sourceType: classifyBrightDataDomain(domain),
-        }
-      },
-    )
-
-    recordSuccess('serp')
-    return mapped.filter((r) => r.url && r.title)
-  } catch (e: any) {
-    const msg = e?.name === 'TimeoutError' ? 'timeout' : e?.message ?? String(e)
-    recordFallback('serp', `error:${msg}`)
-    return null
-  }
-}
-
-// --- Web Unlocker ----------------------------------------------------------
-
-/**
- * BrightData Web Unlocker — fetches a URL with JS rendering + rotating
- * residential proxies. Used as a fallback when the native crawler gets a
- * 403/429/captcha/SPA blank page. Returns null when unavailable.
- */
-export async function brightDataUnlock(
+export async function brightDataScrapingBrowserFetch(
   url: string,
-  opts: { renderJs?: boolean; timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; waitForSelector?: string; renderJs?: boolean } = {},
 ): Promise<BrightDataUnlockResult | null> {
   const guard = budgetGuard('unlocker')
   if (!guard.allowed) {
@@ -403,79 +304,241 @@ export async function brightDataUnlock(
     }
     return null
   }
+  if (!BRIGHTDATA_SBR_WSS) {
+    recordFallback('unlocker', 'no_wss_configured')
+    return null
+  }
 
-  const renderJs = opts.renderJs ?? true
-  const timeoutMs = opts.timeoutMs ?? 20_000
+  const timeoutMs = opts.timeoutMs ?? 30_000
+  const waitForSelector = opts.waitForSelector ?? null
+  // Always render JS — that's the whole point of using the Scraping Browser.
+  // For pure HTML fetch, the native fetchUrl in crawler.ts is faster + free.
 
   try {
-    const resp = await fetch(UNLOCKER_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${BRIGHTDATA_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        zone: BRIGHTDATA_UNLOCKER_ZONE,
-        url,
-        format: 'raw', // we want the raw HTML
-        render: renderJs,
-        // Use the same UA as our native crawler for parity.
-        user_agent:
-          'NovaSearchBot/1.0 (+https://nova.search/bot) BrightDataUnlocker/1.0',
-        // Don't run forever — BrightData's own timeout, we also cap on our side.
-        // Tell BrightData to fail fast (we have a fallback already).
-        retry_if_fail: 1,
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-
-    if (resp.status === 401 || resp.status === 403) {
-      disableKind('unlocker', 60)
-      recordFallback('unlocker', `auth_${resp.status}`)
-      return null
-    }
-    if (resp.status === 429) {
-      disableKind('unlocker', 30)
-      recordFallback('unlocker', 'rate_limit')
-      return null
-    }
-    if (!resp.ok) {
-      recordFallback('unlocker', `http_${resp.status}`)
+    // Lazy-import puppeteer-core (only when this function is actually called).
+    const puppeteer = await import('puppeteer-core')
+    let browser: any = null
+    try {
+      browser = await puppeteer.default.connect({
+        browserWSEndpoint: BRIGHTDATA_SBR_WSS,
+        // Don't keep the connection alive across page navigations — we want
+        // the connection to close cleanly after each scrape so the BrightData
+        // session is released.
+        defaultViewport: null,
+      })
+    } catch (e: any) {
+      recordFallback('unlocker', `connect_error:${e?.message ?? String(e)}`)
       return null
     }
 
-    const contentType =
-      (resp.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
-    const finalUrl = resp.headers.get('x-final-url') ?? url
-    const content = await resp.text()
+    try {
+      const page = await browser.newPage()
+      await page.setUserAgent(
+        'NovaSearchBot/1.0 (+https://nova.search/bot) BrightDataScrapingBrowser/1.0',
+      )
+      // Block images/fonts/CSS for faster fetch — we only need the DOM+JS-rendered HTML.
+      await page.setRequestInterception(true)
+      page.on('request', (req: any) => {
+        const rt = req.resourceType()
+        if (rt === 'image' || rt === 'stylesheet' || rt === 'font' || rt === 'media') {
+          req.abort()
+        } else {
+          req.continue()
+        }
+      })
 
-    recordSuccess('unlocker')
-    return {
-      ok: true,
-      status: 200,
-      finalUrl,
-      contentType,
-      content,
+      const resp = await page.goto(url, {
+        waitUntil: waitForSelector ? 'domcontentloaded' : 'networkidle2',
+        timeout: timeoutMs,
+      })
+      if (!resp) {
+        recordFallback('unlocker', 'no_response')
+        await browser.close()
+        return null
+      }
+      const status = resp.status()
+      if (status >= 400) {
+        recordFallback('unlocker', `http_${status}`)
+        await browser.close()
+        return null
+      }
+      if (waitForSelector) {
+        try {
+          await page.waitForSelector(waitForSelector, { timeout: timeoutMs })
+        } catch {
+          // Selector didn't appear — proceed with what we have.
+        }
+      }
+      const finalUrl = page.url()
+      const content = await page.content()
+      const contentType = 'text/html'
+
+      recordSuccess('unlocker')
+      await browser.close()
+      return {
+        ok: true,
+        status,
+        finalUrl,
+        contentType,
+        content,
+      }
+    } catch (e: any) {
+      try { await browser.close() } catch {}
+      const msg = e?.name === 'TimeoutError' ? 'timeout' : e?.message ?? String(e)
+      recordFallback('unlocker', `error:${msg}`)
+      return null
     }
   } catch (e: any) {
-    const msg = e?.name === 'TimeoutError' ? 'timeout' : e?.message ?? String(e)
-    recordFallback('unlocker', `error:${msg}`)
+    // puppeteer-core import failed (shouldn't happen — we installed it)
+    recordFallback('unlocker', `import_error:${e?.message ?? String(e)}`)
     return null
   }
 }
 
-// --- Dataset ingestion -----------------------------------------------------
+/**
+ * Legacy alias — used by crawler.ts. Wraps the Scraping Browser fetch.
+ * Kept as `brightDataUnlock` so existing imports keep working.
+ */
+export const brightDataUnlock = brightDataScrapingBrowserFetch
+
+// --- Datasets v3 API: snapshot fetch + trigger ----------------------------
 
 /**
- * BrightData dataset trigger — kicks off a snapshot of a pre-defined dataset
- * (the dataset is created in BrightData's UI by the operator). For now we
- * expose a generic trigger; the operator passes the dataset ID.
- * Used to bulk-ingest large public datasets (e.g., 50k Wikipedia article URLs)
- * into the index.
+ * Fetch the content of an already-triggered BrightData snapshot.
+ * Endpoint: GET /datasets/v3/snapshot/<id>
+ *
+ * Returns the markdown + html2text + page_html + url + title + timestamp.
+ */
+export async function brightDataSnapshotFetch(
+  snapshotId: string,
+): Promise<BrightDataSnapshotResult> {
+  const guard = budgetGuard('dataset')
+  if (!guard.allowed) {
+    return {
+      ok: false,
+      snapshotId,
+      url: null,
+      title: null,
+      markdown: null,
+      html2text: null,
+      pageHtml: null,
+      timestamp: null,
+      error: guard.reason ?? 'unknown',
+    }
+  }
+
+  try {
+    const resp = await fetch(`${DATASET_SNAPSHOT_API}/${snapshotId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${BRIGHTDATA_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(15_000),
+    })
+
+    if (resp.status === 401 || resp.status === 403) {
+      disableKind('dataset', 60)
+      recordFallback('dataset', `auth_${resp.status}`)
+      return {
+        ok: false,
+        snapshotId,
+        url: null,
+        title: null,
+        markdown: null,
+        html2text: null,
+        pageHtml: null,
+        timestamp: null,
+        error: `auth_${resp.status}`,
+      }
+    }
+    if (resp.status === 429) {
+      disableKind('dataset', 30)
+      recordFallback('dataset', 'rate_limit')
+      return {
+        ok: false,
+        snapshotId,
+        url: null,
+        title: null,
+        markdown: null,
+        html2text: null,
+        pageHtml: null,
+        timestamp: null,
+        error: 'rate_limit',
+      }
+    }
+    if (!resp.ok) {
+      recordFallback('dataset', `http_${resp.status}`)
+      return {
+        ok: false,
+        snapshotId,
+        url: null,
+        title: null,
+        markdown: null,
+        html2text: null,
+        pageHtml: null,
+        timestamp: null,
+        error: `http_${resp.status}`,
+      }
+    }
+
+    const data = await resp.json()
+    // BrightData returns either a single object or an array. Normalize.
+    const row: any = Array.isArray(data) ? data[0] : data
+    if (!row || typeof row !== 'object') {
+      recordFallback('dataset', 'no_row')
+      return {
+        ok: false,
+        snapshotId,
+        url: null,
+        title: null,
+        markdown: null,
+        html2text: null,
+        pageHtml: null,
+        timestamp: null,
+        error: 'no_row',
+      }
+    }
+
+    recordSuccess('dataset')
+    return {
+      ok: true,
+      snapshotId,
+      url: row.url ?? row.input?.url ?? null,
+      title: row.page_title ?? row.title ?? null,
+      markdown: row.markdown ?? null,
+      html2text: row.html2text ?? null,
+      pageHtml: row.page_html ?? row.html ?? null,
+      timestamp: row.timestamp ?? null,
+    }
+  } catch (e: any) {
+    const msg = e?.name === 'TimeoutError' ? 'timeout' : e?.message ?? String(e)
+    recordFallback('dataset', `error:${msg}`)
+    return {
+      ok: false,
+      snapshotId,
+      url: null,
+      title: null,
+      markdown: null,
+      html2text: null,
+      pageHtml: null,
+      timestamp: null,
+      error: msg,
+    }
+  }
+}
+
+/**
+ * Trigger a new BrightData dataset snapshot. The dataset_id is configured in
+ * the BrightData dashboard by the operator.
+ * Endpoint: POST /datasets/v3/trigger
+ *
+ * Returns the snapshot_id immediately; the actual scraping happens async.
+ * Use brightDataSnapshotFetch(snapshotId) to poll for results.
  */
 export async function brightDataDatasetTrigger(
   datasetId: string,
-  opts: { maxRows?: number } = {},
+  opts: { maxRows?: number; inputs?: Record<string, unknown>[] } = {},
 ): Promise<BrightDataDatasetResult> {
   const guard = budgetGuard('dataset')
   if (!guard.allowed) {
@@ -488,8 +551,7 @@ export async function brightDataDatasetTrigger(
   }
 
   try {
-    // Step 1: trigger the snapshot.
-    const triggerResp = await fetch(`${DATASET_API_URL}/trigger`, {
+    const triggerResp = await fetch(DATASET_TRIGGER_API, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${BRIGHTDATA_TOKEN}`,
@@ -498,6 +560,9 @@ export async function brightDataDatasetTrigger(
       body: JSON.stringify({
         dataset_id: datasetId,
         zone: BRIGHTDATA_DATASET_ZONE,
+        // If inputs are provided, pass them. Otherwise BrightData uses the
+        // dataset's default start URL(s).
+        ...(opts.inputs ? { inputs: opts.inputs } : {}),
       }),
       signal: AbortSignal.timeout(15_000),
     })
@@ -505,16 +570,20 @@ export async function brightDataDatasetTrigger(
       if (triggerResp.status === 401 || triggerResp.status === 403) {
         disableKind('dataset', 60)
       }
+      const errBody = await triggerResp.text().catch(() => '')
+      recordFallback('dataset', `trigger_http_${triggerResp.status}`)
       return {
         ok: false,
         snapshotId: null,
         rows: [],
-        error: `trigger_http_${triggerResp.status}`,
+        error: `trigger_http_${triggerResp.status}: ${errBody.slice(0, 200)}`,
       }
     }
     const triggerData = await triggerResp.json()
-    const snapshotId: string | null = triggerData?.snapshot_id ?? null
+    const snapshotId: string | null =
+      triggerData?.snapshot_id ?? triggerData?.id ?? null
     if (!snapshotId) {
+      recordFallback('dataset', 'no_snapshot_id')
       return {
         ok: false,
         snapshotId: null,
@@ -523,37 +592,13 @@ export async function brightDataDatasetTrigger(
       }
     }
 
-    // Step 2: poll the snapshot status (cap at 3 polls).
-    const maxRows = opts.maxRows ?? 1000
-    for (let i = 0; i < 3; i++) {
-      await sleep(2000)
-      const pollResp = await fetch(
-        `${DATASET_API_URL}/snapshot/${snapshotId}`,
-        {
-          headers: { 'Authorization': `Bearer ${BRIGHTDATA_TOKEN}` },
-          signal: AbortSignal.timeout(10_000),
-        },
-      )
-      if (!pollResp.ok) continue
-      const pollData = await pollResp.json()
-      const status: string = pollData?.status ?? 'running'
-      if (status === 'ready' || status === 'done') {
-        const rowsRaw: any[] = pollData?.data ?? pollData?.rows ?? []
-        const rows = rowsRaw.slice(0, maxRows).map((r: any) =>
-          typeof r === 'object' && r !== null ? r : { value: r },
-        )
-        recordSuccess('dataset')
-        return { ok: true, snapshotId, rows }
-      }
-      // 'running' → keep polling
-    }
-    // Timeout — snapshot still running.
-    recordFallback('dataset', 'snapshot_timeout')
+    // Trigger succeeded — return immediately. Caller can poll
+    // brightDataSnapshotFetch(snapshotId) until ready.
+    recordSuccess('dataset')
     return {
-      ok: false,
+      ok: true,
       snapshotId,
       rows: [],
-      error: 'snapshot_still_running',
     }
   } catch (e: any) {
     const msg = e?.name === 'TimeoutError' ? 'timeout' : e?.message ?? String(e)
@@ -567,7 +612,37 @@ export async function brightDataDatasetTrigger(
   }
 }
 
-// --- Domain classification (shared with tools.ts) -------------------------
+// --- SERP (NOT configured for this account — gracefully disabled) ---------
+//
+// The user's BrightData account doesn't have a SERP API zone. The function
+// below is kept for API compatibility but always returns null when no
+// SERP zone is configured. The engine falls back to DuckDuckGo (free).
+
+export interface BrightDataSerpResult {
+  title: string
+  url: string
+  snippet: string
+  domain: string
+  position: number
+  sourceType: string
+}
+
+export async function brightDataSerp(
+  _query: string,
+  _opts: { num?: number; country?: string; language?: string } = {},
+): Promise<BrightDataSerpResult[] | null> {
+  // SERP API zone not configured for this account — return null.
+  // The engine falls back to DuckDuckGo via runLiveWebSearch() in tools.ts.
+  recordFallback('serp', 'no_serp_zone')
+  return null
+}
+
+export function isBrightDataSerpWorthIt(_query: string, _indexResultCount: number): boolean {
+  // SERP API not configured — never spend budget on it.
+  return false
+}
+
+// --- Helpers ----------------------------------------------------------------
 
 function classifyBrightDataDomain(host: string): string {
   const h = host.toLowerCase()
@@ -583,29 +658,4 @@ function classifyBrightDataDomain(host: string): string {
   if (/youtube|vimeo|dailymotion|tiktok|twitch/.test(h)) return 'VIDEO'
   if (/linkedin|crunchbase|ycombinator|bloomberg.*company/.test(h)) return 'COMPANY'
   return 'WEB'
-}
-
-// --- Helpers ----------------------------------------------------------------
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/**
- * Best-effort "should we try BrightData?" prefilter for the SERP API.
- * Used by tools.ts to avoid spending budget on queries the free stack can
- * easily handle (pure math, unit conversion, weather/time).
- */
-export function isBrightDataSerpWorthIt(query: string, indexResultCount: number): boolean {
-  // Only when the local index misses.
-  if (indexResultCount > 0) return false
-  const q = query.trim().toLowerCase()
-  if (q.length < 3) return false
-  // Skip pure-math / unit-conversion / time / weather — those have instant
-  // answer tools that already work for free.
-  if (/^[\d\s+\-*/().%^]+$/.test(q)) return false
-  if (/(km|mi|miles|kg|lbs|c|f|celsius|fahrenheit)\s*(in|to)/.test(q)) return false
-  if (/\b(time in|weather|temperature|forecast)\b/.test(q)) return false
-  if (/\b(usd|eur|gbp|jpy|aed|egp).*\b(in|to)\b/.test(q)) return false
-  return true
 }

@@ -133,9 +133,11 @@ export async function fetchUrl(
       }
     }
 
-    // Non-2xx — try BrightData Web Unlocker as a fallback for 403/429/captcha.
+    // Non-2xx — try BrightData Scraping Browser as a fallback for 403/429/captcha.
     // BrightData costs (free tier) only happen on these rare misses, so this is
     // a smart spend: a 200 OK native fetch never touches BrightData.
+    // The Scraping Browser uses Puppeteer over wss to fetch the page with JS
+    // rendering + rotating residential proxies — bypasses most anti-bot blocks.
     if (status < 200 || status >= 300) {
       if (status === 403 || status === 429 || status === 503 || status === 426) {
         try {
@@ -151,7 +153,7 @@ export async function fetchUrl(
               finalUrl: unlocked.finalUrl || currentUrl,
               contentType: unlocked.contentType || 'text/html',
               content: unlocked.content,
-              redirectChain: [...redirectChain, `brightdata:unlocker`],
+              redirectChain: [...redirectChain, `brightdata:scraping-browser`],
               fetchedAt,
               size: unlocked.content.length,
             }
