@@ -372,7 +372,7 @@ export function ComposeDialog() {
   return (
     <div
       className={cn(
-        "fixed z-50 flex flex-col rounded-t-xl border border-border bg-background shadow-2xl transition-all",
+        "glass fixed z-50 flex flex-col rounded-2xl border border-border/40 bg-background/95 shadow-float backdrop-blur-xl transition-all",
         windowState === "minimized"
           ? "bottom-0 right-4 h-10 w-72 sm:w-96"
           : windowState === "maximized"
@@ -384,7 +384,7 @@ export function ComposeDialog() {
     >
       {/* Title bar */}
       <div
-        className="flex h-10 flex-shrink-0 cursor-default items-center gap-2 rounded-t-xl bg-muted/60 px-3 text-foreground"
+        className="flex h-10 flex-shrink-0 cursor-default items-center gap-2 rounded-t-2xl bg-muted/40 px-3 text-foreground backdrop-blur-md"
         onClick={() => windowState === "minimized" && setWindowState("normal")}
       >
         <span className="flex-1 truncate text-xs font-medium">{titleText}</span>
@@ -485,11 +485,11 @@ export function ComposeDialog() {
           )}
 
           {/* Toolbar */}
-          <div className="flex h-12 flex-shrink-0 items-center gap-1 border-t border-border px-3">
+          <div className="flex h-12 flex-shrink-0 items-center gap-1 border-t border-border/40 bg-background/60 px-3 backdrop-blur-md">
             <Button
               onClick={handleSend}
               disabled={sending}
-              className="h-8 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              className="btn-premium h-8 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-premium hover:bg-primary/90 disabled:opacity-60"
             >
               {sending ? "Sending…" : "Send"}
               <Send className="ml-1.5 h-3.5 w-3.5" />

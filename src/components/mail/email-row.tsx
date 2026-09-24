@@ -66,13 +66,13 @@ export function EmailRow({
         }
       }}
       className={cn(
-        "group relative flex cursor-pointer items-start gap-2 px-3 transition-colors sm:px-4",
-        density === "compact" ? "py-1.5" : "py-2.5",
+        "group relative flex cursor-pointer items-start gap-2.5 px-3 transition-all duration-200 sm:px-5",
+        density === "compact" ? "py-1.5" : "py-3",
         active
-          ? "bg-primary/10"
+          ? "bg-primary/10 shadow-[inset_3px_0_0_0_hsl(var(--primary))]"
           : selected
           ? "bg-muted/60"
-          : "hover:bg-muted/40",
+          : "hover:bg-muted/40 hover:shadow-[inset_3px_0_0_0_hsl(var(--gold))]",
         unread ? "bg-muted/20" : ""
       )}
     >
@@ -91,10 +91,10 @@ export function EmailRow({
         />
       </div>
 
-      <Avatar className="mt-0.5 h-9 w-9 flex-shrink-0">
+      <Avatar className="mt-0.5 h-10 w-10 flex-shrink-0 ring-1 ring-border/40 transition-transform duration-200 group-hover:scale-105">
         <AvatarFallback
           className={cn(
-            "text-xs font-semibold text-cream",
+            "text-xs font-semibold text-cream shadow-soft",
             getAvatarColor(email.fromEmail || email.fromName)
           )}
         >
@@ -146,9 +146,9 @@ export function EmailRow({
             )}
           </span>
 
-          {/* Hover action buttons — overlay the time on hover */}
+          {/* Hover action buttons — glass overlay on hover */}
           {hasHoverActions && (
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-full bg-background/95 px-1 py-0.5 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-full bg-background/95 px-1.5 py-1 opacity-0 shadow-soft backdrop-blur-md transition-all duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
               {onArchive && (
                 <RowActionBtn label="Archive" onClick={onArchive}>
                   <Archive className="h-3.5 w-3.5" />
@@ -254,7 +254,7 @@ function RowActionBtn({
         onClick();
       }}
       className={cn(
-        "flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        "btn-premium flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-all duration-200 hover:scale-110 hover:bg-muted hover:text-foreground",
         danger && "hover:text-destructive"
       )}
       aria-label={label}

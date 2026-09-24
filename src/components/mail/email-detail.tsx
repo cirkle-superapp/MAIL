@@ -230,15 +230,15 @@ export function EmailDetail({
 
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* Action toolbar */}
-      <div className="flex h-12 items-center gap-1 border-b border-border px-2 sm:px-4">
+      {/* Premium glass action toolbar */}
+      <div className="glass flex h-12 items-center gap-1 border-b border-border/40 px-2 backdrop-blur-md sm:px-4">
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9"
+                className="btn-premium h-9 w-9"
                 onClick={onBack}
                 aria-label="Back to list"
               >
@@ -399,25 +399,25 @@ export function EmailDetail({
         </div>
       </div>
 
-      {/* Reply/Forward buttons (fixed at bottom of pane) */}
-      <div className="flex items-center gap-2 border-t border-border bg-background p-3 sm:px-8">
+      {/* Premium reply/forward buttons (fixed at bottom of pane) */}
+      <div className="flex items-center gap-2 border-t border-border/40 bg-background/60 p-3 backdrop-blur-md sm:px-8">
         <Button
           variant="outline"
-          className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
+          className="btn-premium h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
           onClick={() => openReply(email.id)}
         >
           <Reply className="mr-2 h-4 w-4" /> Reply
         </Button>
         <Button
           variant="outline"
-          className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
+          className="btn-premium h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
           onClick={() => openReplyAll(email.id)}
         >
           <ReplyAll className="mr-2 h-4 w-4" /> Reply all
         </Button>
         <Button
           variant="outline"
-          className="h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
+          className="btn-premium h-10 rounded-full border-primary/30 px-5 text-primary hover:bg-primary/5 hover:text-primary"
           onClick={() => openForward(email.id)}
         >
           <Forward className="mr-2 h-4 w-4" /> Forward
@@ -446,7 +446,7 @@ function ActionBtn({
             variant="ghost"
             size="icon"
             className={cn(
-              "h-9 w-9",
+              "btn-premium h-9 w-9 transition-all duration-200 hover:scale-110",
               danger
                 ? "text-muted-foreground hover:text-destructive"
                 : "text-muted-foreground hover:text-foreground"
@@ -508,7 +508,7 @@ function MessageView({
   }
 
   return (
-    <article className="rounded-xl border border-border/60 bg-card shadow-sm">
+    <article className="card-premium rounded-2xl border border-border/40 bg-card shadow-premium">
       <div className="flex items-start gap-3 p-4 sm:p-5">
         <Avatar className="h-10 w-10 flex-shrink-0">
           <AvatarFallback

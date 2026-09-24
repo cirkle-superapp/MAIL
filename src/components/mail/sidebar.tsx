@@ -135,7 +135,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   return (
     <aside
       className={cn(
-        "flex h-full flex-col border-r border-border bg-background transition-[width] duration-200",
+        "glass flex h-full flex-col border-r border-border/40 bg-background/80 backdrop-blur-xl transition-[width] duration-300",
         collapsed ? "w-0 overflow-hidden md:w-0" : "w-64"
       )}
       aria-label="Mail folders"
@@ -146,7 +146,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
             <TooltipTrigger asChild>
               <Button
                 onClick={() => openCompose()}
-                className="h-12 w-full justify-start gap-3 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-soft transition hover:bg-primary/90 hover:shadow-glow"
+                className="btn-premium h-12 w-full justify-start gap-3 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-premium transition-all duration-200 hover:scale-[1.02] hover:bg-primary/90 hover:shadow-glow"
               >
                 <Pencil className="h-4 w-4" />
                 <span>Compose</span>
@@ -164,7 +164,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
             <button
               onClick={() => setFolder("COMMAND_CENTER")}
               className={cn(
-                "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-colors",
+                "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
                 isActive("COMMAND_CENTER")
                   ? "bg-primary/10 font-semibold text-primary"
                   : "text-foreground/80 hover:bg-muted"
@@ -197,7 +197,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   key={item.key}
                   onClick={() => setFolder(item.key)}
                   className={cn(
-                    "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-colors",
+                    "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
                     active
                       ? "bg-accent/10 font-semibold text-accent"
                       : "text-foreground/80 hover:bg-muted"
@@ -242,7 +242,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                 key={item.key}
                 onClick={() => setFolder(item.key)}
                 className={cn(
-                  "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-colors",
+                  "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
                   active
                     ? "bg-primary/10 font-semibold text-primary"
                     : "text-foreground/80 hover:bg-muted"
