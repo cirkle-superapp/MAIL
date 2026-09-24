@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Lightbulb, Loader2, Check } from "lucide-react";
+import { Sparkles, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -52,7 +52,7 @@ export function SubjectImprover({ subject, onPick }: SubjectImproverProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-accent hover:text-accent"
+          className="btn-premium glass h-8 w-8 rounded-full text-gold shadow-soft hover:text-gold"
           onClick={improve}
           aria-label="Improve subject"
           title="AI subject suggestions"
@@ -60,14 +60,14 @@ export function SubjectImprover({ subject, onPick }: SubjectImproverProps) {
           {loading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Lightbulb className="h-3.5 w-3.5" />
+            <Sparkles className="h-3.5 w-3.5" />
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[320px] p-2">
+      <PopoverContent align="end" className="glass-strong w-[320px] rounded-2xl border border-border/40 p-2 shadow-premium">
         {suggestions.length > 0 ? (
           <div className="space-y-1">
-            <div className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-accent">
+            <div className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gold">
               AI Subject Suggestions
             </div>
             {suggestions.map((s, i) => (
@@ -78,9 +78,9 @@ export function SubjectImprover({ subject, onPick }: SubjectImproverProps) {
                   setOpen(false);
                   toast({ title: "Subject updated", duration: 1000 });
                 }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground/90 transition hover:bg-muted"
+                className="btn-premium flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground/90 transition-colors hover:bg-primary/10 hover:text-primary"
               >
-                <Check className="h-3 w-3 flex-shrink-0 text-emerald-500" />
+                <Check className="h-3 w-3 flex-shrink-0 text-gold" />
                 {s}
               </button>
             ))}

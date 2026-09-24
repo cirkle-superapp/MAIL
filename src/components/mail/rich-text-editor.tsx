@@ -101,7 +101,7 @@ export function RichTextEditor({
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
       {/* Toolbar */}
-      <div className="flex items-center gap-0.5 border-b border-border/60 px-2 py-1">
+      <div className="glass self-start inline-flex items-center gap-0.5 rounded-full p-1 shadow-soft">
         <TooltipProvider delayDuration={300}>
           {tools.map((t) => (
             <Tooltip key={t.cmd + (t.arg ?? "")}>
@@ -109,7 +109,7 @@ export function RichTextEditor({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="btn-premium h-8 w-8 rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => exec(t.cmd, t.arg)}
                   aria-label={t.label}
@@ -126,7 +126,7 @@ export function RichTextEditor({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                className="btn-premium h-8 w-8 rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={handleLink}
                 aria-label="Insert link"
@@ -137,13 +137,13 @@ export function RichTextEditor({
             </TooltipTrigger>
             <TooltipContent side="top">Insert link</TooltipContent>
           </Tooltip>
-          <div className="mx-1 h-4 w-px bg-border" />
+          <div className="mx-1 h-4 w-px bg-border/60" />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                className="btn-premium h-8 w-8 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => exec("removeFormat")}
                 aria-label="Clear formatting"
@@ -157,7 +157,7 @@ export function RichTextEditor({
         </TooltipProvider>
       </div>
 
-      {/* Editable surface — placeholder via global .rte-placeholder rule */}
+      {/* Editable surface — placeholder via global .rte-surface rule */}
       <div
         ref={ref}
         contentEditable
@@ -169,7 +169,7 @@ export function RichTextEditor({
         onInput={emit}
         onBlur={emit}
         onKeyDown={handleKeydown}
-        className="rte-surface min-h-[8rem] flex-1 cursor-text overflow-y-auto px-3 py-2 text-sm leading-relaxed text-foreground/90 outline-none [&_a]:text-accent [&_a:hover]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_ol]:ml-5 [&_ol]:list-decimal [&_ul]:ml-5 [&_ul]:list-disc"
+        className="rte-surface mt-3 min-h-[8rem] flex-1 cursor-text overflow-y-auto text-sm leading-relaxed text-foreground/90 outline-none [&_a]:text-accent [&_a:hover]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_ol]:ml-5 [&_ol]:list-decimal [&_ul]:ml-5 [&_ul]:list-disc"
       />
     </div>
   );

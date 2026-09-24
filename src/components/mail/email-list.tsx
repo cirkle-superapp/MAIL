@@ -340,9 +340,9 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
   }
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="relative flex h-full flex-col bg-background">
       {/* List header / toolbar */}
-      <div className="flex h-12 items-center gap-2 border-b border-border px-3 sm:px-4">
+      <div className="glass animate-spring-in flex h-14 items-center gap-2 border-b border-border/40 px-3 sm:px-4">
         {selected.size > 0 ? (
           <BulkToolbar
             count={selected.size}
@@ -393,16 +393,27 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
               aria-label="Select all"
               className="ml-1"
             />
-            <meta.icon className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-medium text-foreground">{title}</h2>
-            <span className="text-xs text-muted-foreground">
-              {emails.length > 0 && `${emails.length} ${emails.length === 1 ? "message" : "messages"}`}
-            </span>
+            <div
+              className={cn(
+                "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg shadow-soft",
+                folder === "INBOX"
+                  ? "bg-gradient-gold text-cream"
+                  : "bg-primary/10 text-primary"
+              )}
+            >
+              <meta.icon className="h-4 w-4" />
+            </div>
+            <h2 className="font-display text-base font-medium text-foreground">{title}</h2>
+            {emails.length > 0 && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {emails.length} {emails.length === 1 ? "message" : "messages"}
+              </span>
+            )}
             {(folder === "TRASH" || folder === "SPAM") && emails.length > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="ml-2 h-8 gap-1 text-xs text-muted-foreground hover:text-destructive"
+                className="btn-premium ml-2 h-8 gap-1 rounded-full text-xs text-muted-foreground hover:text-destructive"
                 onClick={() => setEmptyConfirmOpen(true)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -416,7 +427,7 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8"
+                      className="btn-premium h-8 w-8 rounded-full"
                       onClick={() => refetch()}
                       aria-label="Refresh"
                     >
@@ -431,7 +442,12 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
                   <TooltipContent>Refresh</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="btn-premium h-8 w-8 rounded-full"
+                aria-label="More"
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </div>
@@ -441,7 +457,7 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
 
       {/* Inbox category tabs */}
       {showTabs && (
-        <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background px-2">
+        <div className="glass flex flex-shrink-0 items-center gap-1 overflow-x-auto border-b border-border/40 px-2 py-2">
           <InboxTabButton
             active={inboxTab === "ALL"}
             label="All"
@@ -567,16 +583,23 @@ function InboxTabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex flex-shrink-0 items-center gap-2 rounded-t-lg border-b-2 px-3 py-2 text-sm transition-colors",
+        "flex flex-shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-all duration-200",
         active
-          ? "border-primary font-semibold text-foreground"
-          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+          ? "bg-primary/10 font-semibold text-primary shadow-soft"
+          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       )}
     >
       {dot && <span className={cn("h-2 w-2 rounded-full", dot)} />}
       <span>{label}</span>
       {count > 0 && (
-        <span className="text-[11px] text-muted-foreground">{count}</span>
+        <span
+          className={cn(
+            "text-[11px]",
+            active ? "text-primary/70" : "text-muted-foreground"
+          )}
+        >
+          {count}
+        </span>
       )}
     </button>
   );
@@ -617,21 +640,26 @@ function DateGroupedEmailList({
     <div>
       {BUCKET_ORDER.filter((b) => groups.has(b)).map((bucket) => (
         <section key={bucket}>
-          <div className="sticky top-0 z-10 flex h-7 items-center border-b border-border/60 bg-muted/40 px-4 backdrop-blur-sm">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <div className="glass-strong sticky top-0 z-10 flex h-9 items-center gap-1.5 border-b border-border/40 px-4">
+            <span
+              className="h-3 w-1 rounded-full bg-gradient-gold"
+              aria-hidden="true"
+            />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/70">
               {bucket}
             </span>
-            <span className="ml-2 text-[10px] text-muted-foreground/70">
+            <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               {groups.get(bucket)!.length}
             </span>
           </div>
-          <ul className="divide-y divide-border/60">
-            {groups.get(bucket)!.map((email) => (
+          <ul className="divide-y divide-border/40">
+            {groups.get(bucket)!.map((email, idx) => (
               <EmailRow
                 key={email.id}
                 email={email}
                 selected={selected.has(email.id)}
                 active={activeId === email.id}
+                index={idx}
                 onSelect={() => onToggleSelect(email.id)}
                 onOpen={() => onOpen(email.id)}
                 onArchive={() => onArchive(email)}
@@ -674,15 +702,20 @@ function BulkToolbar({
   onToggleLabel: (label: string, checked: boolean) => void;
 }) {
   return (
-    <div className="flex w-full items-center gap-1">
-      <span className="text-xs font-medium text-foreground">
+    <div className="flex w-full animate-spring-in items-center gap-1">
+      <span className="font-display text-sm font-semibold text-foreground">
         {count} selected
       </span>
-      <div className="mx-1 h-5 w-px bg-border" />
+      <div className="mx-1 h-5 w-px bg-border/60" />
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onArchive}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="btn-premium h-8 w-8 rounded-full"
+              onClick={onArchive}
+            >
               <Archive className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -698,7 +731,12 @@ function BulkToolbar({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onMarkRead}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="btn-premium h-8 w-8 rounded-full"
+              onClick={onMarkRead}
+            >
               <MailOpen className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -708,21 +746,26 @@ function BulkToolbar({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onMarkUnread}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="btn-premium h-8 w-8 rounded-full"
+              onClick={onMarkUnread}
+            >
               <Mail className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Mark as unread</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <div className="mx-1 h-5 w-px bg-border" />
+      <div className="mx-1 h-5 w-px bg-border/60" />
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              className="btn-premium h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
               onClick={onDelete}
             >
               <Trash2 className="h-4 w-4" />
@@ -747,11 +790,11 @@ function BulkToolbar({
 
 function EmailListSkeleton() {
   return (
-    <ul className="divide-y divide-border/60">
+    <ul className="divide-y divide-border/40">
       {Array.from({ length: 8 }).map((_, i) => (
         <li key={i} className="flex items-center gap-3 px-4 py-3">
           <Skeleton className="h-4 w-4 rounded" />
-          <Skeleton className="h-8 w-8 rounded-full" />
+          <Skeleton className="h-8 w-8 rounded-full shadow-soft" />
           <div className="flex-1 space-y-2">
             <Skeleton className="h-3 w-1/3" />
             <Skeleton className="h-3 w-2/3" />
@@ -782,19 +825,26 @@ function EmptyState({
   const meta = FOLDER_META[folder];
   const Icon = meta.icon;
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Icon className="h-7 w-7" />
-      </div>
-      <div>
-        <p className="text-sm font-medium text-foreground">
-          {search ? "No messages found" : `No messages in ${meta.label}`}
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {search
-            ? "Try a different search term."
-            : "New messages will appear here."}
-        </p>
+    <div className="flex h-full flex-col items-center justify-center p-10 text-center">
+      <div className="card-premium animate-spring-in w-full max-w-sm p-8">
+        <div
+          className={cn(
+            "mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl shadow-glow animate-float",
+            search ? "bg-gradient-hero" : "bg-gradient-gold"
+          )}
+        >
+          <Icon className="h-7 w-7 text-cream" />
+        </div>
+        <div>
+          <p className="font-display text-base font-medium text-foreground">
+            {search ? "No messages found" : `No messages in ${meta.label}`}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {search
+              ? "Try a different search term."
+              : "New messages will appear here."}
+          </p>
+        </div>
       </div>
     </div>
   );

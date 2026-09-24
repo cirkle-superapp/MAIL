@@ -10,6 +10,7 @@ import {
   Trash2,
   Save,
   CalendarClock,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -372,29 +373,44 @@ export function ComposeDialog() {
   return (
     <div
       className={cn(
-        "glass fixed z-50 flex flex-col rounded-2xl border border-border/40 bg-background/95 shadow-float backdrop-blur-xl transition-all",
+        "fixed z-50 flex overflow-hidden rounded-2xl shadow-premium transition-all animate-spring-in",
         windowState === "minimized"
-          ? "bottom-0 right-4 h-10 w-72 sm:w-96"
+          ? "card-premium glass-strong bottom-4 right-4 h-14 w-80 flex-row items-center gap-3 p-3 shadow-float sm:w-96"
           : windowState === "maximized"
-          ? "inset-2 sm:inset-4"
-          : "bottom-0 right-4 h-[34rem] w-[min(34rem,calc(100vw-2rem))] sm:right-6"
+          ? "glass-strong inset-0 flex-col rounded-none sm:inset-2"
+          : "glass-strong bottom-0 right-4 h-[34rem] w-[min(34rem,calc(100vw-2rem))] flex-col sm:bottom-6 sm:right-6"
       )}
       role="dialog"
       aria-label="Compose email"
     >
       {/* Title bar */}
       <div
-        className="flex h-10 flex-shrink-0 cursor-default items-center gap-2 rounded-t-2xl bg-muted/40 px-3 text-foreground backdrop-blur-md"
+        className={cn(
+          "flex flex-shrink-0 cursor-default items-center",
+          windowState === "minimized"
+            ? "w-full gap-3"
+            : "glass h-12 gap-2 border-b border-border/40 px-5 animate-spring-in"
+        )}
         onClick={() => windowState === "minimized" && setWindowState("normal")}
       >
-        <span className="flex-1 truncate text-xs font-medium">{titleText}</span>
+        {windowState !== "minimized" && (
+          <span className="h-6 w-1 rounded-full bg-gradient-gold" />
+        )}
+        <span
+          className={cn(
+            "flex-1 truncate font-display font-medium",
+            windowState === "minimized" ? "text-sm" : "text-base"
+          )}
+        >
+          {titleText}
+        </span>
         {sending && (
           <span className="text-[10px] text-muted-foreground">sending…</span>
         )}
         {windowState !== "minimized" && (
           <button
             onClick={() => setWindowState("minimized")}
-            className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
+            className="btn-premium flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Minimize"
           >
             <Minus className="h-3.5 w-3.5" />
@@ -404,14 +420,14 @@ export function ComposeDialog() {
           onClick={() =>
             setWindowState(windowState === "maximized" ? "normal" : "maximized")
           }
-          className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
+          className="btn-premium flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
           aria-label={windowState === "maximized" ? "Restore" : "Maximize"}
         >
           <Maximize2 className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={handleDiscard}
-          className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
+          className="btn-premium flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           aria-label="Close"
         >
           <X className="h-3.5 w-3.5" />
@@ -419,8 +435,8 @@ export function ComposeDialog() {
       </div>
 
       {windowState !== "minimized" && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-border">
-          <div className="flex flex-col divide-y divide-border">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex flex-col divide-y divide-border/40">
             <RecipientInput
               value={to}
               onChange={setTo}
@@ -429,7 +445,7 @@ export function ComposeDialog() {
               showToggle={!showCc}
               onToggle={() => setShowCc(true)}
               toggleLabel="Cc/Bcc"
-              className="px-3"
+              className="bg-muted/20 px-5 py-3"
             />
             {showCc && (
               <>
@@ -438,23 +454,23 @@ export function ComposeDialog() {
                   onChange={setCc}
                   placeholder="Cc"
                   ariaLabel="Cc"
-                  className="px-3"
+                  className="bg-muted/20 px-5 py-3"
                 />
                 <RecipientInput
                   value={bcc}
                   onChange={setBcc}
                   placeholder="Bcc"
                   ariaLabel="Bcc"
-                  className="px-3"
+                  className="bg-muted/20 px-5 py-3"
                 />
               </>
             )}
-            <div className="flex items-center px-3">
+            <div className="flex items-center gap-2 px-5 py-3">
               <Input
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Subject"
-                className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
+                className="font-display h-9 border-0 bg-transparent px-0 text-lg font-medium text-foreground shadow-none focus-visible:ring-0 placeholder:text-muted-foreground"
                 aria-label="Subject"
               />
               <SubjectImprover subject={subject} onPick={setSubject} />
@@ -467,16 +483,18 @@ export function ComposeDialog() {
             onChange={setBodyHtml}
             onSendShortcut={handleSend}
             placeholder="Write your message… (Cmd/Ctrl+Enter to send)"
-            className="min-h-0"
+            className="min-h-[200px] px-5 py-4"
           />
 
           {attachmentName && (
-            <div className="mx-3 mb-2 inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs">
-              <Paperclip className="h-3.5 w-3.5 text-accent" />
-              <span className="font-medium">{attachmentName}</span>
+            <div className="card-premium mx-5 mb-3 inline-flex w-fit items-center gap-2 rounded-lg p-3 shadow-soft transition-all duration-200 hover:-translate-y-px">
+              <Paperclip className="h-3.5 w-3.5 text-gold" />
+              <span className="text-sm font-medium text-foreground">
+                {attachmentName}
+              </span>
               <button
                 onClick={() => setAttachmentName("")}
-                className="ml-1 text-muted-foreground hover:text-foreground"
+                className="btn-premium ml-1 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:text-destructive"
                 aria-label="Remove attachment"
               >
                 <X className="h-3 w-3" />
@@ -484,113 +502,126 @@ export function ComposeDialog() {
             </div>
           )}
 
-          {/* Toolbar */}
-          <div className="flex h-12 flex-shrink-0 items-center gap-1 border-t border-border/40 bg-background/60 px-3 backdrop-blur-md">
-            <Button
-              onClick={handleSend}
-              disabled={sending}
-              className="btn-premium h-8 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-premium hover:bg-primary/90 disabled:opacity-60"
-            >
-              {sending ? "Sending…" : "Send"}
-              <Send className="ml-1.5 h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() =>
-                setAttachmentName(
-                  attachmentName ? "" : "attachment-" + Date.now() + ".pdf"
-                )
-              }
-              aria-label="Attach file"
-              title="Attach file"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
-            <CopilotButton
-              getText={() => bodyHtml}
-              setText={(html) => {
-                setBodyHtml(html);
-                setEditorKey((k) => k + 1);
-              }}
-            />
-            <VoiceInput
-              onTranscript={(text, isFinal) => {
-                if (isFinal) {
-                  const el = document.querySelector(
-                    '[contenteditable][role="textbox"]'
-                  ) as HTMLElement | null;
-                  if (el) {
-                    el.focus();
-                    document.execCommand("insertText", false, text);
-                  }
+          {/* Footer action bar */}
+          <div className="glass flex h-14 flex-shrink-0 items-center justify-between gap-2 border-t border-border/40 px-5 py-3 backdrop-blur-md animate-spring-in">
+            <div className="flex items-center gap-1.5">
+              <Button
+                onClick={handleSend}
+                disabled={sending}
+                className="btn-premium rounded-full bg-gradient-gold px-5 text-sm font-semibold text-charcoal shadow-glow transition-all duration-200 hover:scale-105 hover:shadow-glow disabled:opacity-70"
+              >
+                {sending ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    Send
+                    <Send className="ml-1.5 h-3.5 w-3.5" />
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="btn-premium glass h-9 w-9 rounded-full shadow-soft"
+                onClick={() =>
+                  setAttachmentName(
+                    attachmentName ? "" : "attachment-" + Date.now() + ".pdf"
+                  )
                 }
-              }}
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-1 h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={handleSaveDraft}
-              aria-label="Save as draft"
-              title="Save as draft"
-            >
-              <Save className="h-3.5 w-3.5" /> Save draft
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                const d = new Date();
-                d.setDate(d.getDate() + 1);
-                d.setHours(9, 0, 0, 0);
-                const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-                  .toISOString()
-                  .slice(0, 16);
-                setScheduleDate(local);
-                setScheduleOpen(true);
-              }}
-              aria-label="Schedule send"
-              title="Schedule send"
-            >
-              <CalendarClock className="h-3.5 w-3.5" /> Schedule
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={
-                mode === "edit-draft" && sourceEmail
-                  ? handleDeleteDraft
-                  : handleDiscard
-              }
-              aria-label={
-                mode === "edit-draft" && sourceEmail
-                  ? "Discard draft"
-                  : "Discard"
-              }
-              title={
-                mode === "edit-draft" && sourceEmail
-                  ? "Discard draft (delete)"
-                  : "Discard"
-              }
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+                aria-label="Attach file"
+                title="Attach file"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              <CopilotButton
+                getText={() => bodyHtml}
+                setText={(html) => {
+                  setBodyHtml(html);
+                  setEditorKey((k) => k + 1);
+                }}
+              />
+              <VoiceInput
+                onTranscript={(text, isFinal) => {
+                  if (isFinal) {
+                    const el = document.querySelector(
+                      '[contenteditable][role="textbox"]'
+                    ) as HTMLElement | null;
+                    if (el) {
+                      el.focus();
+                      document.execCommand("insertText", false, text);
+                    }
+                  }
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="btn-premium glass h-9 gap-1 rounded-full text-xs text-muted-foreground shadow-soft hover:text-foreground"
+                onClick={handleSaveDraft}
+                aria-label="Save as draft"
+                title="Save as draft"
+              >
+                <Save className="h-3.5 w-3.5" /> Save draft
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="btn-premium glass h-9 gap-1 rounded-full text-xs text-muted-foreground shadow-soft hover:text-foreground"
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 1);
+                  d.setHours(9, 0, 0, 0);
+                  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+                    .toISOString()
+                    .slice(0, 16);
+                  setScheduleDate(local);
+                  setScheduleOpen(true);
+                }}
+                aria-label="Schedule send"
+                title="Schedule send"
+              >
+                <CalendarClock className="h-3.5 w-3.5" /> Schedule
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="btn-premium ml-1 h-9 w-9 rounded-full text-muted-foreground hover:text-destructive"
+                onClick={
+                  mode === "edit-draft" && sourceEmail
+                    ? handleDeleteDraft
+                    : handleDiscard
+                }
+                aria-label={
+                  mode === "edit-draft" && sourceEmail
+                    ? "Discard draft"
+                    : "Discard"
+                }
+                title={
+                  mode === "edit-draft" && sourceEmail
+                    ? "Discard draft (delete)"
+                    : "Discard"
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       )}
 
       <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
-        <DialogContent className="sm:max-w-[360px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarClock className="h-4 w-4 text-primary" /> Schedule send
+        <DialogContent className="glass-strong overflow-hidden rounded-2xl border border-border/40 p-0 shadow-premium sm:max-w-[420px]">
+          <DialogHeader className="glass flex h-12 items-center gap-2 border-b border-border/40 px-5">
+            <DialogTitle className="flex items-center gap-2 font-display text-base font-medium">
+              <CalendarClock className="h-4 w-4 text-gold" /> Schedule send
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 p-5">
             <div className="space-y-1.5">
               <Label htmlFor="schedule-datetime">Send at</Label>
               <Input
@@ -598,6 +629,7 @@ export function ComposeDialog() {
                 type="datetime-local"
                 value={scheduleDate}
                 onChange={(e) => setScheduleDate(e.target.value)}
+                className="glass rounded-full px-4 py-2 text-sm shadow-soft"
               />
             </div>
             {scheduleDate && (
@@ -608,12 +640,16 @@ export function ComposeDialog() {
               </p>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setScheduleOpen(false)}>
+          <DialogFooter className="flex items-center justify-end gap-2 border-t border-border/40 px-5 py-3">
+            <Button
+              variant="ghost"
+              onClick={() => setScheduleOpen(false)}
+              className="btn-premium glass rounded-full"
+            >
               Cancel
             </Button>
             <Button
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              className="btn-premium rounded-full bg-gradient-gold text-charcoal"
               onClick={handleSchedule}
               disabled={!scheduleDate}
             >

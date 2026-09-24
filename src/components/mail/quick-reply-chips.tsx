@@ -12,11 +12,13 @@ interface QuickReply {
 }
 
 const TONE_STYLES: Record<string, string> = {
-  positive: "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10",
-  neutral: "border-border bg-muted/40 text-foreground/80 hover:bg-muted",
-  declining: "border-rose-500/30 bg-rose-500/5 text-rose-700 dark:text-rose-300 hover:bg-rose-500/10",
-  question: "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10",
+  positive: "text-emerald-700 dark:text-emerald-300",
+  neutral: "text-foreground/80",
+  declining: "text-rose-700 dark:text-rose-300",
+  question: "text-amber-700 dark:text-amber-300",
 };
+
+const STAGGER_CLASSES = ["stagger-1", "stagger-2", "stagger-3"] as const;
 
 interface QuickReplyChipsProps {
   emailId: string;
@@ -58,7 +60,7 @@ export function QuickReplyChips({ emailId, emailSubject }: QuickReplyChipsProps)
   if (replies.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 border-t border-border/40 pt-4">
       <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         <Zap className="h-3 w-3 text-accent" /> Quick reply
       </span>
@@ -75,7 +77,8 @@ export function QuickReplyChips({ emailId, emailSubject }: QuickReplyChipsProps)
             });
           }}
           className={cn(
-            "rounded-full border px-3 py-1 text-xs font-medium transition",
+            "btn-premium glass animate-spring-in rounded-full px-4 py-2 text-sm font-medium shadow-soft transition-all duration-200 hover:-translate-y-px hover:shadow-premium hover:ring-1 hover:ring-gold/30",
+            STAGGER_CLASSES[i % STAGGER_CLASSES.length],
             TONE_STYLES[r.tone] ?? TONE_STYLES.neutral
           )}
         >

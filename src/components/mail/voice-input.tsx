@@ -140,8 +140,10 @@ export function VoiceInput({ onTranscript }: VoiceInputProps) {
             variant="ghost"
             size="icon"
             className={cn(
-              "relative h-8 w-8",
-              recording && "animate-pulse bg-rose-500/10 text-rose-600"
+              "btn-premium glass relative h-8 w-8 rounded-full shadow-soft",
+              recording
+                ? "text-rose animate-pulse-glow"
+                : "text-muted-foreground hover:text-foreground"
             )}
             onClick={toggle}
             aria-label={recording ? "Stop dictation" : "Voice dictation"}

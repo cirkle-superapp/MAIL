@@ -83,7 +83,7 @@ export function CopilotButton({ getText, setText }: CopilotButtonProps) {
           variant="ghost"
           size="sm"
           disabled={loading}
-          className="h-7 gap-1 text-xs text-accent hover:text-accent"
+          className="btn-premium h-8 gap-1 rounded-full bg-gradient-gold px-3 text-xs font-medium text-charcoal shadow-glow transition-all duration-200 hover:scale-105 hover:shadow-glow disabled:opacity-70"
           title="AI Composition Copilot"
         >
           {loading ? (
@@ -94,8 +94,8 @@ export function CopilotButton({ getText, setText }: CopilotButtonProps) {
           Copilot
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[12rem]">
-        <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wide text-accent">
+      <DropdownMenuContent align="start" className="glass-strong min-w-[12rem] rounded-2xl border border-border/40 p-1 shadow-premium">
+        <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wide text-gold">
           AI Composition Copilot
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

@@ -55,7 +55,7 @@ export function HandleEmailPanel({ emailId, onUseReply }: HandlePanelProps) {
       <Button
         variant="outline"
         size="sm"
-        className="h-8 gap-1.5 border-accent/30 text-accent hover:bg-accent/5"
+        className="btn-premium h-8 gap-1.5 rounded-full border-transparent bg-gradient-gold px-3 text-charcoal font-medium hover:opacity-90"
         onClick={run}
         title="HANDLE — AI analyzes this email and proposes a workflow"
       >
@@ -65,15 +65,15 @@ export function HandleEmailPanel({ emailId, onUseReply }: HandlePanelProps) {
   }
 
   return (
-    <div className="rounded-xl border border-accent/30 bg-accent/5 p-4 shadow-soft">
+    <div className="card-premium rounded-xl border border-accent/30 bg-gradient-to-br from-primary/5 to-gold/5 p-4 shadow-glass animate-spring-in stagger-3">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Sparkles className="h-4 w-4 text-accent" />
+        <div className="font-display flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Sparkles className="h-4 w-4 text-gold" />
           Handle — proposed workflow
         </div>
         <button
           onClick={() => setOpen(false)}
-          className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
+          className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-muted"
           aria-label="Close"
         >
           <X className="h-3.5 w-3.5" />
@@ -128,7 +128,7 @@ function HandleResultView({
       {result.summary ? (
         <div>
           <SectionTitle icon={FileText} label="Summary" />
-          <p className="text-foreground/90">{result.summary}</p>
+          <p className="text-sm leading-relaxed text-foreground/80">{result.summary}</p>
         </div>
       ) : null}
 
@@ -138,13 +138,13 @@ function HandleResultView({
           <SectionTitle icon={CheckCircle2} label="Key info" />
           <dl className="space-y-1">
             {result.keyInfo.map((k, i) => (
-              <div key={i} className="flex flex-col gap-0.5">
+              <div key={i} className="rounded-lg bg-background/60 p-2">
                 <div className="flex gap-2">
                   <dt className="font-medium text-foreground">{k.label}:</dt>
                   <dd className="text-foreground/90">{k.value}</dd>
                 </div>
                 {k.source && (
-                  <p className="border-l-2 border-border pl-2 text-[11px] italic text-muted-foreground">
+                  <p className="mt-1 border-l-2 border-border pl-2 text-[11px] italic text-muted-foreground">
                     “{k.source}”
                   </p>
                 )}
@@ -197,13 +197,13 @@ function HandleResultView({
       {result.suggestedReply ? (
         <div>
           <SectionTitle icon={Mail} label="Suggested reply (draft — review before sending)" />
-          <div className="rounded-lg border border-border bg-background/60 p-3 text-foreground/90 whitespace-pre-wrap">
+          <div className="rounded-lg border border-border/40 bg-muted/40 p-3 text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
             {result.suggestedReply}
           </div>
           <Button
             variant="outline"
             size="sm"
-            className="mt-2 h-7 gap-1 text-xs"
+            className="btn-premium mt-2 h-7 gap-1 rounded-full border-transparent bg-gradient-gold px-3 text-xs text-charcoal font-medium hover:opacity-90"
             onClick={() => onUseReply(result.suggestedReply)}
           >
             Use as reply

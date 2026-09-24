@@ -90,7 +90,10 @@ export function RecipientInput({
   }
 
   return (
-    <div ref={wrapRef} className={cn("relative flex items-center", className)}>
+    <div ref={wrapRef} className={cn("relative flex items-center gap-2", className)}>
+      <span className="font-display w-10 flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {placeholder}
+      </span>
       <Input
         value={value}
         onChange={(e) => {
@@ -101,7 +104,7 @@ export function RecipientInput({
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
+        className="h-9 flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 placeholder:text-muted-foreground"
         aria-label={ariaLabel}
         autoComplete="off"
       />
@@ -109,14 +112,14 @@ export function RecipientInput({
         <button
           type="button"
           onClick={onToggle}
-          className="ml-2 flex flex-shrink-0 items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          className="btn-premium glass ml-2 flex flex-shrink-0 items-center gap-0.5 rounded-full px-2 py-1 text-[11px] text-muted-foreground shadow-soft transition-colors hover:text-foreground"
         >
           {toggleLabel} <ChevronDown className="h-3 w-3" />
         </button>
       )}
 
       {open && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-float">
+        <div className="glass-strong absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-2xl p-1 shadow-premium">
           {suggestions.map((c, i) => (
             <button
               key={c.email}
@@ -124,13 +127,13 @@ export function RecipientInput({
               onMouseEnter={() => setHighlight(i)}
               onClick={() => applySuggestion(c)}
               className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                highlight === i ? "bg-accent/10" : "hover:bg-muted"
+                "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                highlight === i ? "bg-primary/10 text-primary" : "hover:bg-muted"
               )}
             >
               <span
                 className={cn(
-                  "grid h-6 w-6 flex-shrink-0 place-items-center rounded-full text-[10px] font-semibold text-cream",
+                  "grid h-6 w-6 flex-shrink-0 place-items-center rounded-full text-[10px] font-semibold text-cream shadow-soft",
                   getAvatarColor(c.email)
                 )}
               >
@@ -145,7 +148,7 @@ export function RecipientInput({
                 </div>
               </div>
               {highlight === i && (
-                <Check className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
+                <Check className="h-3.5 w-3.5 flex-shrink-0 text-gold" />
               )}
             </button>
           ))}

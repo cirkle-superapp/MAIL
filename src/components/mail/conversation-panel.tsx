@@ -44,7 +44,7 @@ export function ConversationPanel({ threadId }: ConversationPanelProps) {
       <Button
         variant="outline"
         size="sm"
-        className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/5"
+        className="btn-premium h-8 gap-1.5 rounded-full border-primary/30 px-3 text-primary hover:bg-primary/5 hover:shadow-soft"
         onClick={run}
         title="Conversation Reconstruction — structured thread summary"
       >
@@ -54,15 +54,15 @@ export function ConversationPanel({ threadId }: ConversationPanelProps) {
   }
 
   return (
-    <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-soft">
+    <div className="card-premium glass rounded-xl border border-primary/30 p-4 shadow-soft">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        <div className="font-display flex items-center gap-2 text-sm font-semibold text-foreground">
           <MessagesSquare className="h-4 w-4 text-primary" />
           Conversation Reconstruction
         </div>
         <button
           onClick={() => setOpen(false)}
-          className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
+          className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-muted"
           aria-label="Close"
         >
           <X className="h-3.5 w-3.5" />

@@ -30,7 +30,17 @@ interface EmailRowProps {
   onToggleRead?: () => void;
   onSnooze?: (untilISO: string) => void;
   onUnsnooze?: () => void;
+  index?: number;
 }
+
+const STAGGER_CLASSES = [
+  "stagger-1",
+  "stagger-2",
+  "stagger-3",
+  "stagger-4",
+  "stagger-5",
+  "stagger-6",
+] as const;
 
 export function EmailRow({
   email,
@@ -43,8 +53,11 @@ export function EmailRow({
   onToggleRead,
   onSnooze,
   onUnsnooze,
+  index,
 }: EmailRowProps) {
   const unread = !email.isRead;
+  const staggerClass =
+    index != null ? STAGGER_CLASSES[index % STAGGER_CLASSES.length] : "";
   const labels = email.labels
     ? email.labels.split(",").map((l) => l.trim()).filter(Boolean)
     : [];
@@ -69,11 +82,14 @@ export function EmailRow({
         "group relative flex cursor-pointer items-start gap-2.5 px-3 transition-all duration-200 sm:px-5",
         density === "compact" ? "py-1.5" : "py-3",
         active
-          ? "bg-primary/10 shadow-[inset_3px_0_0_0_hsl(var(--primary))]"
+          ? "bg-primary/10 shadow-soft shadow-[inset_3px_0_0_0_hsl(var(--primary))]"
           : selected
           ? "bg-muted/60"
-          : "hover:bg-muted/40 hover:shadow-[inset_3px_0_0_0_hsl(var(--gold))]",
-        unread ? "bg-muted/20" : ""
+          : unread
+          ? "bg-gold/5 hover:bg-gold/10 hover:shadow-[inset_3px_0_0_0_hsl(var(--gold))]"
+          : "bg-muted/30 hover:bg-muted/50 hover:shadow-[inset_3px_0_0_0_hsl(var(--gold))]",
+        "animate-spring-in",
+        staggerClass
       )}
     >
       <div className="flex items-center gap-1.5 pt-1">
@@ -91,7 +107,7 @@ export function EmailRow({
         />
       </div>
 
-      <Avatar className="mt-0.5 h-10 w-10 flex-shrink-0 ring-1 ring-border/40 transition-transform duration-200 group-hover:scale-105">
+      <Avatar className="mt-0.5 h-10 w-10 flex-shrink-0 ring-1 ring-border/40 transition-all duration-300 group-hover:scale-105 hover:ring-gold/40">
         <AvatarFallback
           className={cn(
             "text-xs font-semibold text-cream shadow-soft",
@@ -148,7 +164,7 @@ export function EmailRow({
 
           {/* Hover action buttons — glass overlay on hover */}
           {hasHoverActions && (
-            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-full bg-background/95 px-1.5 py-1 opacity-0 shadow-soft backdrop-blur-md transition-all duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+            <div className="glass-strong absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-full px-1.5 py-1 opacity-0 shadow-premium transition-all duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
               {onArchive && (
                 <RowActionBtn label="Archive" onClick={onArchive}>
                   <Archive className="h-3.5 w-3.5" />
@@ -185,12 +201,15 @@ export function EmailRow({
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">
           {email.isImportant && (
-            <span className="inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" aria-label="Important" />
+            <span
+              className="inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent animate-pulse-glow"
+              aria-label="Important"
+            />
           )}
           {email.intent && INTENT_LABELS[email.intent as Intent] ? (
             <span
               className={cn(
-                "flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                "flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium shadow-soft",
                 INTENT_COLORS[email.intent as Intent] ?? INTENT_COLORS.FYI
               )}
             >
@@ -215,7 +234,7 @@ export function EmailRow({
               <span
                 key={label}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shadow-soft",
                   labelChipClass(label)
                 )}
               >
