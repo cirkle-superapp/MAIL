@@ -5,7 +5,7 @@
  * mirror the shapes returned by the search-engine backend API
  * (see `src/lib/search/index.ts` + `src/lib/search/ai-search.ts`) but are
  * redefined here so client bundles never need to import the server-side
- * search library (which transitively touches Prisma + z-ai-web-dev-sdk).
+ * search library (which transitively touches Prisma + the LLM client).
  */
 
 export type SearchMode =

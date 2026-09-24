@@ -158,7 +158,19 @@ export async function fetchUrl(
               size: unlocked.content.length,
             }
           }
-        } catch {
+          // P2-2: structured log when BrightData fallback returned no content.
+          console.warn('[crawler] brightdata fallback returned no content', {
+            url: currentUrl,
+            httpStatus: status,
+            brightDataError: unlocked?.error ?? 'no_content',
+          })
+        } catch (e: any) {
+          // P2-2: structured log when BrightData fallback threw.
+          console.warn('[crawler] brightdata fallback threw', {
+            url: currentUrl,
+            httpStatus: status,
+            error: e?.message ?? String(e),
+          })
           // BrightData unavailable (no token / budget exhausted) — fall through
           // to the regular error return. The engine still works free.
         }

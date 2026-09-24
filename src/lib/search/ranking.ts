@@ -205,6 +205,16 @@ function buildWhySignals(
 
 /**
  * Rank candidates by mode-specific weighted score.
+ *
+ * P0-3 FIX: All lexical signals (tfidf / BM25) are now NORMALIZED to [0,1]
+ * by dividing by the maximum score in the candidate set BEFORE being fed
+ * into the linear formula. This fixes the bug where raw BM25 scores (which
+ * can exceed 1.0 for strong matches) saturated clamp01() and destroyed
+ * score discrimination between candidates.
+ *
+ * A second fix: candidates whose normalized lexical score is below a
+ * threshold (0.05) are dropped — these are near-misses that should NOT
+ * appear in the SERP just because the BM25 query found a token overlap.
  */
 export async function rankCandidates(
   candidates: RankInput[],
@@ -215,6 +225,19 @@ export async function rankCandidates(
   dbDocs: Map<string, RankDocRow>,
   ctx?: RankContext
 ): Promise<RankedResult[]> {
+  // P0-3: compute the max lexical score for normalization.
+  // If maxLex is 0 (no candidates had any score — shouldn't happen since
+  // candidates come from BM25 retrieval), set it to 1 to avoid division by 0.
+  const maxLex = Math.max(...candidates.map((c) => c.tfidf), 0.0001)
+  const minLex = Math.min(...candidates.map((c) => c.tfidf), 0)
+
+  // Drop near-miss candidates: if the best score is meaningfully higher
+  // than a candidate's score (normalized < 0.05), that candidate is likely
+  // an accidental match (e.g. "Steve Jobs" matching "Rust book" because
+  // "jobs" appears in job postings on the page). This is the most impactful
+  // fix for the relevance crisis.
+  const RELEVANCE_THRESHOLD = 0.05
+
   const results: RankedResult[] = []
 
   // --- Automatic freshness detection ---
@@ -229,8 +252,11 @@ export async function rankCandidates(
     const doc = dbDocs.get(c.docId)
     if (!doc) continue
 
-    const lex = c.tfidf
-    const sem = semanticBoost(c.tfidf, c.matchedTerms)
+    // P0-3: normalize lexical + semantic signals to [0,1].
+    // We use max-normalization (divide by the maximum) so the top candidate
+    // always gets lex=1.0, and other candidates get a fraction.
+    const lex = (c.tfidf - minLex) / (maxLex - minLex + 0.0001)
+    const sem = semanticBoost(lex, c.matchedTerms) // now in [0, ~1]
     const q = doc.qualityScore
     const fr = freshnessScore(doc)
     const st = sourceTypeMatch(parsed, doc)
@@ -238,9 +264,17 @@ export async function rankCandidates(
     const intent = intentMatch(parsed, doc)
     const spam = doc.spamScore
     const dup = doc.isOriginal ? 0 : 0.3
-    // Authority signal from the link graph (§7.4). 0 if no inbound links
-    // or if the Link table is empty (graceful degradation).
     const auth = ctx?.authorityMap?.get(doc.domain.toLowerCase()) ?? 0
+
+    // P0-3: skip near-miss candidates. The threshold is applied to the
+    // NORMALIZED score — so if the top candidate has BM25=5.0 and another
+    // candidate has BM25=0.1, the latter's normalized score is 0.02 (below
+    // the 0.05 threshold) and gets dropped.
+    if (lex < RELEVANCE_THRESHOLD && mode !== 'IMAGES') {
+      // For IMAGE mode, keep all candidates (image results are based on
+      // og:image presence, not token relevance).
+      continue
+    }
 
     let score = 0
     switch (mode) {

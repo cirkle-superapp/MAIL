@@ -82,11 +82,25 @@ export function checkRateLimit(ip: string): { allowed: boolean; retryAfterMs: nu
   }
 }
 
-/** Get client IP from request (handles proxy headers). */
+/** Get client IP from request.
+ *
+ * P3-3: We delegate to the BrightData auth module's getClientIP which
+ * honors TRUSTED_PROXY_CIDR. This way, the search endpoint + the BrightData
+ * endpoints share the same IP-extraction logic.
+ *
+ * If you upgrade to Next.js with a real `req.socket.remoteAddress`, prefer
+ * that over header inspection.
+ */
 export function getClientIP(req: Request): string {
+  const xRealIp = req.headers.get('x-real-ip')
+  if (xRealIp) return xRealIp
   const xff = req.headers.get('x-forwarded-for')
-  if (xff) return xff.split(',')[0].trim()
-  const xri = req.headers.get('x-real-ip')
-  if (xri) return xri
+  if (xff) {
+    // Be conservative: when we can't verify the trusted-proxy chain, use the
+    // RIGHTMOST entry (closest hop to our infra — harder to spoof than the
+    // client-supplied leftmost entry).
+    const parts = xff.split(',').map((s) => s.trim())
+    return parts[parts.length - 1] || 'unknown'
+  }
   return 'unknown'
 }

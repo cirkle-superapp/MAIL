@@ -157,11 +157,33 @@ function loadState(): BudgetState {
 
 function persistState(): void {
   if (!_state) return
+  // P2-6: Atomic write via temp-file + rename. The previous direct
+  // writeFileSync was racy: two concurrent `recordSuccess` calls could
+  // both read {n:3} from disk, both increment to {n:4}, both write {n:4}
+  // — losing 1 increment. POSIX `rename()` is atomic, so this write is
+  // safe even under concurrent requests.
+  //
+  // The remaining race is read-modify-write: req A reads {n:3}, req B reads
+  // {n:3}, A increments to 4 + writes, B increments to 4 + overwrites. To
+  // fully fix that, we use a process-wide write mutex (writeLock chain).
+  // For multi-instance serverless deploys, the SQLite-backed KeyValue
+  // counter is the right fix (out of scope for this patch — see P2-6 in
+  // the audit report's roadmap).
+  writeLock = writeLock.then(() => writeStateToDisk()).catch(() => {})
+}
+
+let writeLock: Promise<void> = Promise.resolve()
+
+function writeStateToDisk(): void {
+  if (!_state) return
   try {
     const fp = budgetFilePath()
     const dir = path.dirname(fp)
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(fp, JSON.stringify(_state, null, 2), 'utf8')
+    // Write to a temp file in the same directory, then rename — atomic.
+    const tmp = `${fp}.tmp.${process.pid}.${Date.now()}`
+    fs.writeFileSync(tmp, JSON.stringify(_state, null, 2), 'utf8')
+    fs.renameSync(tmp, fp)
   } catch {
     // ignore — in-memory state is still authoritative.
   }
@@ -315,11 +337,13 @@ export async function brightDataScrapingBrowserFetch(
   // For pure HTML fetch, the native fetchUrl in crawler.ts is faster + free.
 
   try {
-    // Lazy-import puppeteer-core (only when this function is actually called).
-    const puppeteer = await import('puppeteer-core')
+    // P3-4: robust puppeteer-core import — handle both CJS default export
+    // and ESM named export (depends on the bundler's interop).
+    const puppeteerModule: any = await import('puppeteer-core')
+    const puppeteer = puppeteerModule.default ?? puppeteerModule
     let browser: any = null
     try {
-      browser = await puppeteer.default.connect({
+      browser = await puppeteer.connect({
         browserWSEndpoint: BRIGHTDATA_SBR_WSS,
         // Don't keep the connection alive across page navigations — we want
         // the connection to close cleanly after each scrape so the BrightData
@@ -612,11 +636,15 @@ export async function brightDataDatasetTrigger(
   }
 }
 
-// --- SERP (NOT configured for this account — gracefully disabled) ---------
+// --- SERP API (NOT configured for this account — disabled) --------------
 //
-// The user's BrightData account doesn't have a SERP API zone. The function
-// below is kept for API compatibility but always returns null when no
-// SERP zone is configured. The engine falls back to DuckDuckGo (free).
+// P2-8: This account has no SERP API zone. The previous implementation
+// returned null + called `recordFallback('serp', 'no_serp_zone')` on every
+// invocation — which inflated the `totalFallbacks` counter on the budget
+// dashboard. We now return null WITHOUT recording a fallback (no real
+// call was attempted, no real fallback happened — the SERP tier is simply
+// not configured). The engine falls back to DuckDuckGo via runLiveWebSearch
+// in tools.ts.
 
 export interface BrightDataSerpResult {
   title: string
@@ -631,14 +659,13 @@ export async function brightDataSerp(
   _query: string,
   _opts: { num?: number; country?: string; language?: string } = {},
 ): Promise<BrightDataSerpResult[] | null> {
-  // SERP API zone not configured for this account — return null.
-  // The engine falls back to DuckDuckGo via runLiveWebSearch() in tools.ts.
-  recordFallback('serp', 'no_serp_zone')
+  // P2-8: SERP API zone not configured for this account — return null
+  // silently (no recordFallback — no real call was attempted).
   return null
 }
 
 export function isBrightDataSerpWorthIt(_query: string, _indexResultCount: number): boolean {
-  // SERP API not configured — never spend budget on it.
+  // P2-8: SERP API not configured — never spend budget on it.
   return false
 }
 

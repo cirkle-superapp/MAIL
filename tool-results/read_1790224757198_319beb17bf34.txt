@@ -1,0 +1,698 @@
+     1→# CIRKLE Search Engine — Top-Tier Audit Report
+     2→
+     3→**Audit date:** 2024 (single session)
+     4→**Auditor:** sub-agent (COO/CTO/testing hat) reporting to the orchestrator
+     5→**Project root:** `/home/z/my-project`
+     6→**Headline:** The CIRKLE project is an impressive demo-grade search engine with strong architectural bones, a working BrightData integration, and a credible zero-cost guarantee. **It is NOT production-ready.** Three P0 blockers (unauthenticated paid-API gateway, broken observability, broken ranking normalization) and four P1 critical issues (gated live-web fallback, dead code in metrics path, dead `z-ai-web-dev-sdk` dependency, missing test framework) must be fixed before any public launch. The 20/20 evaluation suite passing is misleading because it checks result COUNT, not RELEVANCE — and the index only has 33 documents, so most "real-world" queries (Steve Jobs, apple, Albert Einstein) return irrelevant top hits.
+     7→
+     8→---
+     9→
+    10→## Executive Summary
+    11→
+    12→CIRKLE has the skeleton of a serious search engine: BM25 retrieval with an inverted index, 9 ranking modes, query understanding, an AI answer layer, sponsored-result isolation, a BrightData scraping tier with circuit-breaker budget guard, robots.txt compliance, sitemap parsing, RSS ingestion, rate limiting, and a thoughtful UI with a working sticky footer. The code quality is genuinely above average — comments explain the *why*, types are clean, lint passes with zero warnings.
+    13→
+    14→**But the engine fails its primary job: returning relevant results for queries that real users ask.** Probes in this audit:
+    15→
+    16→| Query | Top result returned | Actually relevant? |
+    17→|---|---|---|
+    18→| `Steve Jobs` | "The Rust Programming Language" (by Steve Klabnik) | No — coincidence: "steve" + "jobs" (as in job postings) |
+    19→| `apple` | "The Verge" | No — the word "apple" appears somewhere in the page |
+    20→| `Albert Einstein` | "GOV.UK" (per prior audit) | No |
+    21→| `Taylor Swift Eras Tour` | 7 index hits, 0 live-web hits | None of the 7 are about Taylor Swift |
+    22→| `Lionel Messi Inter Miami` | 2 index hits, 0 live-web hits | None about Messi |
+    23→| `Beyonce Renaissance Tour` | 3 index hits, 0 live-web hits | None about Beyoncé |
+    24→| `Kylian Mbappe Real Madrid` | 9 index hits, 0 live-web hits | None about Mbappé |
+    25→
+    26→Three root causes compound:
+    27→
+    28→1. **Index is too small (33 docs).** No Wikipedia, no Apple, no Einstein. Any 2-token query (e.g. "Steve Jobs") matches SOMETHING in 33 docs by accident.
+    29→2. **BM25 scores aren't normalized** before being fed into the ranking formula, which then clamps to [0,1]. This destroys discrimination: 3 of 4 "Steve Jobs" results have `relevanceScore=1.0`. Ranking is effectively arbitrary.
+    30→3. **Live-web fallback is gated on `indexResultCount > 0`.** So whenever the index returns ANY result (even irrelevant), the live web (DuckDuckGo) fallback is suppressed — meaning the engine never escapes the bad 33-doc index for celebrity/news queries.
+    31→
+    32→**On top of the relevance crisis, three P0 security/observability issues are present:**
+    33→
+    34→- **`/api/brightdata/scrape` is unauthenticated + unrate-limited.** Any visitor can POST `{"url":"https://anything"}` and consume BrightData budget (5/day, 25/month). Worse: it's an **SSRF amplifier** — an attacker can ask CIRKLE to scrape internal URLs via BrightData's residential proxies, bypassing corporate firewalls. Verified live in this audit (HTTP 200, consumed 1 daily call).
+    35→- **`/api/metrics` is broken.** Returns `total searches: 0` even after 8+ real searches in this session. The metrics module-scoped `state` is not shared between the `/api/metrics` route module and the `src/lib/search/index.ts` module (Next.js dev-mode module isolation + cold-start resets in serverless). Verified live.
+    36→- **`/api/brightdata/snapshot/[id]` and `/api/brightdata/datasets` are also unauthenticated** (same code pattern — comment says "Auth: optional BRIGHTDATA_OPERATOR_TOKEN env" but no code reads that env var). Both verified live.
+    37→
+    38→The project has **no README**, **no `.env.example`**, **no CI/CD** (`.github/workflows/` missing), **no test framework installed** (no vitest/jest/playwright-test in devDependencies), and the **`z-ai-web-dev-sdk` package is STILL in `package.json`** even though Task 71 was supposed to remove it (it's only mentioned in 5 stale comments, never imported).
+    39→
+    40→**Honest verdict:** Demo-grade, architecturally credible, **not shippable to end users today**. Fix the 3 P0s and the ranking normalization bug → you have a credible beta. Fix the index size + live-web fallback gating → you have a credible search engine.
+    41→
+    42→---
+    43→
+    44→## Audit Scorecard
+    45→
+    46→| Dimension | Score | Notes |
+    47→|---|---|---|
+    48→| Functional correctness | 5/10 | Core pipeline runs end-to-end. But metrics broken, response missing `tookMs`/`totalFound`, live-web fallback gated out by noisy index, dead code in tool-path metrics branch. |
+    49→| Search relevance | 2/10 | Top-3 hit for "Steve Jobs" is the Rust book; "apple" → The Verge; "Albert Einstein" → GOV.UK. Root causes: (a) 33-doc index, (b) BM25 scores unbounded then clamped to 1.0, (c) live-web fallback gated on `indexResultCount>0`. |
+    50→| Code quality | 7/10 | Comments explain intent. Types clean. Lint passes (0/0). Strict mode on. But `noImplicitAny:false` weakened, dead dep in package.json, dead code after `return` in metrics path, no FKs in schema. |
+    51→| Security | 3/10 | **P0: 3 BrightData endpoints unauthenticated + unrate-limited (scrape/snapshot/datasets). P0: SSRF amplifier via scrape endpoint.** Token isn't leaked in responses (good). Rate limit works (good). But the open BrightData gateway is a budget-burn + SSRF attack surface. |
+    52→| Performance | 7/10 | Sub-second searches for 33 docs. Inverted index built once per cache miss. Response times look fine. No performance regression expected at this scale. Will need rework for 100k+ docs (whole-index reload on every cache miss). |
+    53→| Observability | 2/10 | **Metrics endpoint reports 0 searches after 8+ real searches.** No `tookMs` in response. No structured logging. BrightData fallback errors swallowed silently in `crawler.ts:161`. The "structured observability" claimed in §66 is not actually observable. |
+    54→| Reliability | 6/10 | Zero-cost guarantee budget guard is robust (file-persisted, rollover correct, disable-on-auth-fail). Crawlers fall back gracefully. But: no circuit breaker around Neon (fire-and-forget), no retries on transient 5xx, no health endpoint. |
+    55→| Production readiness | 3/10 | No README. No `.env.example`. No CI/CD. No tests. 3 P0 security issues. Broken metrics. Unauthenticated paid-API gateway. Not production-ready. |
+    56→| Documentation | 2/10 | No README. No `.env.example`. No `CONTRIBUTING.md`. Inline code comments are good, but external docs are zero. |
+    57→| Testing | 1/10 | No test framework installed. The "20/20 eval pass" checks COUNT only, not RELEVANCE — misleading. No unit tests, no integration tests, no e2e tests, no load tests. |
+    58→| **Overall** | **38/100** | Architecturally promising, security-and-relevance broken. |
+    59→
+    60→---
+    61→
+    62→## P0 — Blockers (must fix before any production)
+    63→
+    64→### P0-1. Unauthenticated, unrate-limited BrightData scrape endpoint (SSRF amplifier + budget burn)
+    65→
+    66→**File:** `src/app/api/brightdata/scrape/route.ts` (full file, ~90 lines)
+    67→
+    68→**Description:** The POST handler at line 27 accepts any JSON body with a `url` field, calls `brightDataScrapingBrowserFetch(url)` which drives BrightData's remote Puppeteer over wss, and returns the rendered HTML. **There is no auth check anywhere in the file.** The comment at the top (line 16) claims *"Auth: optional BRIGHTDATA_OPERATOR_TOKEN env. If unset, open in dev."* — but the env var `BRIGHTDATA_OPERATOR_TOKEN` is never read anywhere in the codebase. The "optional" auth is a phantom.
+    69→
+    70→**Impact:**
+    71→1. **Budget burn**: any visitor can POST `{"url":"https://example.com"}` and consume 1 of the 5 daily BrightData calls. An attacker can drain the entire 25/month budget in 25 unauthenticated POSTs from a single script.
+    72→2. **SSRF amplifier (worse)**: an attacker can pass `{"url":"http://10.0.0.5:8080/admin"}` or `{"url":"http://internal-server.corp/secret"}` — CIRKLE will ask BrightData's residential proxies to fetch that internal URL and return the rendered HTML to the attacker. This bypasses corporate firewalls and exposes internal services that BrightData's egress can reach.
+    73→
+    74→**Repro (confirmed live in this audit):**
+    75→```bash
+    76→$ curl -X POST http://localhost:3000/api/brightdata/scrape \
+    77→    -H "Content-Type: application/json" \
+    78→    -d '{"url":"https://example.com","ingest":false}'
+    79→HTTP 200
+    80→{"ok":true,"url":"https://example.com","finalUrl":"https://example.com/",
+    81→ "status":200,"contentType":"text/html","htmlBytes":559,"htmlPreview":"<!doctype...","budget":{...}}
+    82→```
+    83→
+    84→**File:line:** `src/app/api/brightdata/scrape/route.ts:27-90` (entire POST handler)
+    85→
+    86→**Fix recommendation:**
+    87→1. Add a hard auth check at the top of POST:
+    88→   ```ts
+    89→   const opToken = process.env.BRIGHTDATA_OPERATOR_TOKEN
+    90→   if (!opToken) {
+    91→     return NextResponse.json({ error: 'scrape_endpoint_disabled' }, { status: 403 })
+    92→   }
+    93→   const auth = req.headers.get('authorization')
+    94→   if (auth !== `Bearer ${opToken}`) {
+    95→     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    96→   }
+    97→   ```
+    98→2. Validate the `url` against an allow-list of public suffixes (block RFC1918 + localhost + link-local):
+    99→   ```ts
+   100→   const u = new URL(url)
+   101→   const host = u.hostname.toLowerCase()
+   102→   if (host === 'localhost' || host.startsWith('127.') || host.startsWith('10.') ||
+   103→       host.startsWith('192.168.') || host.startsWith('169.254.') || host.endsWith('.local') ||
+   104→       /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+   105→     return NextResponse.json({ error: 'private_network_blocked' }, { status: 400 })
+   106→   }
+   107→   ```
+   108→3. Apply the same per-IP rate limiter used by `/api/search` (cap at, say, 3 BrightData scrapes/hour/IP).
+   109→4. Apply the same auth + SSRF-block + rate-limit to `/api/brightdata/snapshot/[id]/route.ts` and `/api/brightdata/datasets/route.ts` — same bug, same fix.
+   110→
+   111→---
+   112→
+   113→### P0-2. Broken metrics endpoint — `/api/metrics` reports 0 searches after real searches
+   114→
+   115→**Files:** `src/lib/search/metrics.ts` (module-scoped `state`), `src/app/api/metrics/route.ts` (imports `getMetrics` from same module), `src/lib/search/index.ts:543,587,990` (calls `recordSearch`).
+   116→
+   117→**Description:** `metrics.ts` keeps the counters in a module-scoped `const state: MetricsState = {...}`. In Next.js dev mode with HMR, the route module `/api/metrics/route.ts` may import a different module instance than the search pipeline `src/lib/search/index.ts` (HMR can split module graphs). In production serverless, every cold start resets `state` to zero. So:
+   118→- Searches DO call `recordSearch` (line 990 — confirmed)
+   119→- BUT `/api/metrics` reads from a different `state` instance → always returns 0.
+   120→
+   121→**Repro (confirmed live in this audit):**
+   122→```bash
+   123→# Make 8 real searches first (Steve Jobs, apple, zzzz nonexistent, etc.)
+   124→$ curl http://localhost:3000/api/metrics
+   125→{"searches":{"total":0,"cacheHits":0,"zeroResult":0,...},
+   126→ "latency":{"p50":0,"p95":0,"samples":0},
+   127→ "recent":[]}
+   128→```
+   129→
+   130→**File:line:** `src/lib/search/metrics.ts:39-49` (the `state` object), `src/app/api/metrics/route.ts:12-16`.
+   131→
+   132→**Fix recommendation:**
+   133→The simplest fix is to make the metrics state **durable** rather than in-memory:
+   134→1. Persist counters to SQLite (new `Metric` table or simple `KeyValue` table with `key=metrics_state`, `value=JSON`).
+   135→2. `recordSearch` writes to SQLite (debounced / batched).
+   136→3. `getMetrics` reads from SQLite + applies a 60s in-memory read cache for the `/api/metrics` endpoint.
+   137→4. Alternative: use Neon's persistent analytics that the codebase ALREADY writes to (`recordNeonAnalytics` at `src/lib/search/index.ts:982`) — but Neon writes are fire-and-forget + the read path is commented out (line 547) "intentionally NOT in the hot path" because of cold-cache latency in the sandbox. Either fix the Neon read path or move to SQLite.
+   138→
+   139→Without this fix, the metrics endpoint is **actively misleading** — operators relying on it for SLA monitoring will see "0 searches" on a busy production server.
+   140→
+   141→---
+   142→
+   143→### P0-3. Ranking normalization bug — BM25 scores unbounded then clamped to 1.0, destroying discrimination
+   144→
+   145→**File:** `src/lib/search/ranking.ts:285` (the `score = clamp01(score)` line).
+   146→
+   147→**Description:** The ranking formula in `BALANCED` mode (line 253) is:
+   148→```
+   149→score = 0.30*lex + 0.18*sem + 0.15*q + 0.10*fr + 0.09*st + 0.05*or + 0.05*intent + 0.08*auth
+   150→```
+   151→The coefficients assume each signal is in [0,1]. **But `lex` is the raw BM25 score, which is unbounded** (typically 0–10+ for matching docs). So `0.30 * lex` alone exceeds 1.0 for any matched doc, then `clamp01(score)` collapses the result to 1.0. The downstream `results.sort((a,b) => b.relevanceScore - a.relevanceScore)` becomes a no-op for any pair of matched docs that both saturate.
+   152→
+   153→**Repro (confirmed live in this audit):**
+   154→```
+   155→Query: "Steve Jobs"
+   156→1. score=1.000 | title=The Rust Programming Language
+   157→2. score=1.000 | title=Hacker News
+   158→3. score=1.000 | title=News | World Bank Group
+   159→4. score=0.942 | title=Pricing · Plans for every developer · GitHub
+   160→```
+   161→3 of 4 results hit the ceiling. The 4th (0.942) only escapes because its BM25 score happened to be slightly lower. The displayed `whySignals` includes "Strong topical relevance" for ALL of them — which is false for all 4.
+   162→
+   163→**File:line:** `src/lib/search/ranking.ts:232` (`const lex = c.tfidf` — raw BM25), `src/lib/search/ranking.ts:285` (`score = clamp01(score)`).
+   164→
+   165→**Fix recommendation:**
+   166→1. Normalize the BM25 score by the maximum BM25 score across the candidate set, BEFORE feeding into the linear formula:
+   167→   ```ts
+   168→   const maxLex = Math.max(...candidates.map(c => c.tfidf), 0.0001)
+   169→   for (const c of candidates) {
+   170→     const lex = c.tfidf / maxLex  // NOW in [0,1]
+   171→     ...
+   172→   }
+   173→   ```
+   174→2. Alternatively, use min-max normalization over a smoothed range: `lex = (c.tfidf - minTfidf) / (maxTfidf - minTfidf + epsilon)`.
+   175→3. The `semanticBoost` function (line 132-138) ALSO uses raw tfidf — same fix.
+   176→4. Add a relevance threshold: if `lex < 0.05` after normalization, drop the result (don't return near-miss docs as top hits). This will fix the "apple" → The Verge problem.
+   177→5. Add unit tests asserting that for a 2-token query, the top-3 docs have DISTINCT scores (no two docs saturate to 1.0).
+   178→
+   179→---
+   180→
+   181→## P1 — Critical (must fix within 1 week)
+   182→
+   183→### P1-1. Live-web fallback is gated on `indexResultCount > 0` — so the engine never escapes the 33-doc index for celebrity/news queries
+   184→
+   185→**File:** `src/lib/search/tools.ts:790-798` (`shouldLiveWebFallback`).
+   186→
+   187→**Description:** The function:
+   188→```ts
+   189→export function shouldLiveWebFallback(query: string, indexResultCount: number): boolean {
+   190→  if (indexResultCount > 0) return false  // <-- this line
+   191→  ...
+   192→}
+   193→```
+   194→means: if the index returns ANY result (even an irrelevant one), the live-web fallback is suppressed. The caller in `src/lib/search/index.ts:902` is:
+   195→```ts
+   196→if (shouldLiveWebFallback(query, finalRanked.length)) { ... }
+   197→```
+   198→
+   199→So whenever the BM25 query finds even 1 doc (which it almost always does for any 2-token query in a 33-doc index that includes Wikipedia + news sites + tech docs), DuckDuckGo never gets called.
+   200→
+   201→**Repro (confirmed live):**
+   202→| Query | index results | live-web results |
+   203→|---|---|---|
+   204→| Taylor Swift Eras Tour | 7 | 0 |
+   205→| Lionel Messi Inter Miami | 2 | 0 |
+   206→| Beyonce Renaissance Tour | 3 | 0 |
+   207→| Kylian Mbappe Real Madrid | 9 | 0 |
+   208→| zzzz nonexistent | 0 | 0 (DuckDuckGo found nothing for fake string) |
+   209→
+   210→**Impact:** The engine's "real-time" capability is functionally dead for any query that triggers even an irrelevant match. This is the #2 search bug (after P0-3).
+   211→
+   212→**File:line:** `src/lib/search/tools.ts:791`.
+   213→
+   214→**Fix recommendation:**
+   215→1. Change the gate to: trigger the live-web fallback if `finalRanked.length < 3` (instead of `=== 0`), OR if the average relevance score of `finalRanked` is below a threshold (e.g. 0.3 — meaning "the index didn't find anything confidently").
+   216→2. Better: always run the live-web fallback in parallel with the index query for non-trivial queries (cost = 1 extra DuckDuckGo call per search, which is free), then merge live-web results into the SERP below the index results when the index results are weak.
+   217→3. Even better: switch the gate to a confidence model: if the top-3 index results have a mean normalized BM25 score below 0.3, OR if the query tokens have < 50% coverage in the top result, trigger the fallback.
+   218→
+   219→---
+   220→
+   221→### P1-2. Dead code in tool-path metrics — `recordSearch` after `return` in `index.ts:587`
+   222→
+   223→**File:** `src/lib/search/index.ts:586-605`.
+   224→
+   225→**Description:** Look at the structure:
+   226→```ts
+   227→if (toolResult.instantAnswer) {
+   228→  const indexStats: IndexStats = { ... }
+   229→  try { ... } catch { /* ignore */ }
+   230→  return {                       // line 569 — RETURNS HERE
+   231→    query,
+   232→    ...
+   233→  }
+   234→  // Record tool-path metrics.
+   235→  recordSearch({ ... })          // line 587 — UNREACHABLE
+   236→  return {                       // line 588 — UNREACHABLE
+   237→    query,
+   238→    ...
+   239→  }
+   240→}
+   241→```
+   242→Lines 587-605 are completely unreachable. The tool-path search (weather, time, math) metrics never get recorded.
+   243→
+   244→**File:line:** `src/lib/search/index.ts:569` (the early return) and `src/lib/search/index.ts:587` (the dead `recordSearch` call).
+   245→
+   246→**Fix recommendation:**
+   247→1. Move the `recordSearch({...})` call ABOVE the `return` statement (line 569).
+   248→2. Delete the duplicated unreachable `return` block (lines 588-604).
+   249→3. Add an ESLint rule `no-unreachable` (it's part of `eslint:recommended` — if it's not flagging this, the project's eslint config has it disabled).
+   250→
+   251→---
+   252→
+   253→### P1-3. Dead `z-ai-web-dev-sdk` dependency in `package.json`
+   254→
+   255→**File:** `package.json:86`.
+   256→
+   257→**Description:** Task 71 was supposed to remove `z-ai-web-dev-sdk` from the dependencies. The audit confirms it's still there:
+   258→```json
+   259→"z-ai-web-dev-sdk": "^0.0.18",
+   260→```
+   261→A grep across `src/` confirms it's **never imported** — only mentioned in 5 stale comments:
+   262→- `src/app/api/search/route.ts:15` (comment)
+   263→- `src/components/search/types.ts:8` (comment)
+   264→- `src/lib/llm.ts:4` (comment)
+   265→- `src/lib/search/index.ts:21` (comment)
+   266→- `src/store/search-store.ts:21` (comment)
+   267→
+   268→**Impact:** Adds dead weight to `node_modules` + `bun.lock`, slows installs, confuses future contributors who might think it's still in use. Also a security/supply-chain issue — every transitive dep of `z-ai-web-dev-sdk` is now in the install graph for no reason.
+   269→
+   270→**File:line:** `package.json:86`.
+   271→
+   272→**Fix recommendation:**
+   273→1. `bun remove z-ai-web-dev-sdk`
+   274→2. Update the 5 stale comments to remove the reference (or update to "the unified LLM client at `src/lib/llm.ts`").
+   275→3. Run `bun install` to regenerate `bun.lock`.
+   276→
+   277→---
+   278→
+   279→### P1-4. No test framework installed — the "20/20 eval pass" checks COUNT only, not RELEVANCE
+   280→
+   281→**Files:** `package.json:90-100` (devDependencies — no vitest/jest/playwright-test).
+   282→
+   283→**Description:** There is no test framework in the project. The "evaluation suite" mentioned in the prior audit is a script that counts result COUNT, not RELEVANCE. So when it reports "20/20 pass", what it actually means is "20 queries each returned ≥1 result" — which is trivially true even when the top result is the Rust book for "Steve Jobs".
+   284→
+   285→**Impact:** No regression protection. No way to assert "the top 3 results for 'Steve Jobs' should not contain any programming-language book". Refactors (like fixing P0-3) can't be validated automatically.
+   286→
+   287→**Fix recommendation:**
+   288→1. Install vitest + @testing-library/react + playwright:
+   289→   ```bash
+   290→   bun add -d vitest @vitest/ui jsdom @testing-library/react @testing-library/jest-dom
+   291→   bun add -d @playwright/test
+   292→   ```
+   293→2. Write a `tests/relevance.test.ts` that asserts for a fixed query list, the top-3 titles do NOT contain obvious irrelevance markers (e.g. for "Steve Jobs", reject any top-3 result whose title contains "Rust", "Programming", "Job Posting").
+   294→3. Write a `tests/api.test.ts` that asserts:
+   295→   - `/api/brightdata/scrape` returns 401 without auth (after P0-1 fix)
+   296→   - `/api/metrics` returns `total > 0` after a real search (after P0-2 fix)
+   297→   - `/api/search` response includes `tookMs` and `totalFound` (after P2-1 fix)
+   298→4. Wire up `bun run test` in package.json scripts.
+   299→5. Add a GitHub Actions workflow that runs lint + typecheck + tests on every PR (after P2-3 fix).
+   300→
+   301→---
+   302→
+   303→## P2 — Important (must fix within 1 month)
+   304→
+   305→### P2-1. `/api/search` response missing `tookMs` and `totalFound` observability fields
+   306→
+   307→**File:** `src/lib/search/index.ts:952-973` (the `response` object construction).
+   308→
+   309→**Description:** The current top-level response keys are:
+   310→```
+   311→query, interpretedQuery, instantAnswer, liveWebResults, aiAnswer,
+   312→knowledgeCard, sponsored, results, clusters, relatedQuestions,
+   313→didYouMean, pagination, personalized, personalizationFactors, indexStats
+   314→```
+   315→Missing: `tookMs` (search latency in ms) and `totalFound` (total matching docs from index, distinct from `pagination.totalResults` which is post-filter).
+   316→
+   317→**Impact:** Frontend can't show "Searched in 245 ms" UX. Operators can't get per-query latency from the response body. The metrics endpoint (P0-2) is the only other place latency is recorded — and it's broken.
+   318→
+   319→**File:line:** `src/lib/search/index.ts:952`.
+   320→
+   321→**Fix recommendation:** Add to the response:
+   322→```ts
+   323→const response: SearchResponse = {
+   324→  query,
+   325→  tookMs: Date.now() - _searchStart,  // <-- ADD
+   326→  totalFound: hits.length,             // <-- ADD (pre-pagination)
+   327→  interpretedQuery,
+   328→  ...
+   329→}
+   330→```
+   331→Update the `SearchResponse` type at line 168 accordingly.
+   332→
+   333→---
+   334→
+   335→### P2-2. BrightData fallback in `crawler.ts` is silent — no structured logging
+   336→
+   337→**File:** `src/lib/search/crawler.ts:161` (`} catch { /* BrightData unavailable */ }`).
+   338→
+   339→**Description:** When the BrightData Scraping Browser fallback fails (budget exhausted, wss connection error, navigation timeout, etc.), the error is swallowed with `catch {}`. There's no log line, no metric increment, no error-report. Operators have no visibility into "BrightData fallback is failing 80% of the time" until a user complains.
+   340→
+   341→**File:line:** `src/lib/search/crawler.ts:161-164`.
+   342→
+   343→**Fix recommendation:**
+   344→1. Add structured logging: `console.warn('[crawler] brightdata fallback failed', { url: currentUrl, status, error: e?.message })` (or use a real logger — pino/winston).
+   345→2. Increment a metric counter (after P0-2 fix lands) — `recordBrightDataFallbackFailure()`.
+   346→3. Same fix for `src/lib/search/tools.ts:605,622` (DuckDuckGo fallback swallows errors).
+   347→
+   348→---
+   349→
+   350→### P2-3. No CI/CD — `.github/workflows/` is missing
+   351→
+   352→**File:** project root — `.github/` directory does not exist.
+   353→
+   354→**Description:** No GitHub Actions workflows. No automated lint, typecheck, test, or build on PRs. The prior audit verified `bun run lint` passes with 0/0 — but there's no enforcement that the NEXT PR keeps it that way.
+   355→
+   356→**Impact:** Regressions can land without anyone noticing. The 20/20 eval can silently degrade to 18/20 with no signal.
+   357→
+   358→**Fix recommendation:** Create `.github/workflows/ci.yml`:
+   359→```yaml
+   360→name: CI
+   361→on: [push, pull_request]
+   362→jobs:
+   363→  quality:
+   364→    runs-on: ubuntu-latest
+   365→    steps:
+   366→      - uses: actions/checkout@v4
+   367→      - uses: oven-sh/setup-bun@v2
+   368→      - run: bun install --frozen-lockfile
+   369→      - run: bun run lint
+   370→      - run: bun run db:generate
+   371→      - run: bun run build
+   372→      # After P1-4 lands: - run: bun run test
+   373→```
+   374→
+   375→---
+   376→
+   377→### P2-4. No README.md
+   378→
+   379→**File:** project root — `README.md` does not exist.
+   380→
+   381→**Description:** A 1000-file Next.js project with no README. New contributors have to reverse-engineer the architecture from comments. The worklog.md is internal-only (and is in .gitignore).
+   382→
+   383→**Fix recommendation:** Write a README.md covering:
+   384→1. What CIRKLE is (one-paragraph value prop).
+   385→2. Quickstart: `bun install`, `cp .env.example .env`, `bun run db:push`, `bun run dev`.
+   386→3. Architecture diagram (the 6 layers: Crawler → Indexer → Retriever → Ranker → AI Layer → UI).
+   387→4. Where things live (link to `src/lib/search/`).
+   388→5. How to add a BrightData scrape (link to `/api/brightdata/scrape`).
+   389→6. Testing (after P1-4 lands).
+   390→7. Deployment notes.
+   391→
+   392→---
+   393→
+   394→### P2-5. No `.env.example`
+   395→
+   396→**File:** project root — `.env.example` does not exist.
+   397→
+   398→**Description:** New developers cloning the repo have no idea which env vars are required. The `.env` file is correctly gitignored (`.env*` in `.gitignore` line 34 — confirmed in this audit), but there's no template.
+   399→
+   400→**Fix recommendation:** Create `.env.example` with all required env vars (DATABASE_URL, BRIGHTDATA_TOKEN, BRIGHTDATA_SBR_WSS, BRIGHTDATA_SELENIUM, BRIGHTDATA_DAILY_CAP, BRIGHTDATA_MONTHLY_CAP, BRIGHTDATA_OPERATOR_TOKEN, BRIGHTDATA_DISABLE_MINUTES, BRIGHTDATA_BUDGET_FILE) + comments explaining each.
+   401→
+   402→---
+   403→
+   404→### P2-6. BrightData budget guard has a race condition (no file locking)
+   405→
+   406→**File:** `src/lib/brightdata.ts:123-156` (`loadState`), `158-168` (`persistState`), `198-205` (`recordSuccess`).
+   407→
+   408→**Description:** `recordSuccess` does:
+   409→1. `loadState()` — reads JSON file from disk
+   410→2. Mutates `_state` in memory
+   411→3. `persistState()` — writes JSON to disk
+   412→
+   413→If two concurrent requests both call `recordSuccess` at the same time:
+   414→- Req A: reads `{dailyCount: 3}`, increments to 4
+   415→- Req B: reads `{dailyCount: 3}` (still 3, because A hasn't written yet), increments to 4
+   416→- Req A: writes `{dailyCount: 4}`
+   417→- Req B: writes `{dailyCount: 4}` (overwrites A's write)
+   418→
+   419→Net result: 2 BrightData calls happened, but the counter only incremented by 1. The daily cap can be silently exceeded under concurrent load.
+   420→
+   421→**Impact:** The "zero-cost guarantee" can leak under load. An attacker firing 10 concurrent scrape requests could blow past the 5/day cap before the file locks catch up.
+   422→
+   423→**File:line:** `src/lib/brightdata.ts:198-205`.
+   424→
+   425→**Fix recommendation:**
+   426→1. Use a proper atomic write: write to a temp file + rename (atomic on POSIX).
+   427→2. Use a process-wide mutex (e.g. `async-mutex` npm package, or a simple `let writeLock: Promise<void> = Promise.resolve()` chain).
+   428→3. Better: replace the file-based counter with a SQLite table (Prisma `KeyValue` model) + transactions. SQLite handles concurrent writes correctly out of the box.
+   429→4. Add a test: fire 10 concurrent `recordSuccess` calls, assert `dailyCount === 10` after.
+   430→
+   431→---
+   432→
+   433→### P2-7. Prisma schema lacks foreign keys, cascades, and several useful indexes
+   434→
+   435→**File:** `prisma/schema.prisma` (full file).
+   436→
+   437→**Description:**
+   438→- **No FKs**: `CrawlQueue.url` is unique but not linked to `Document.url`. `Link.sourceUrl` / `Link.targetUrl` are plain strings with no integrity enforcement. `SearchHistory.sessionId` is not linked to a Session table. Orphan rows can accumulate silently.
+   439→- **No `onDelete` cascade**: if a Document row is deleted, its corresponding CrawlQueue entry stays (status='done'), its Link rows stay (pointing to a dead URL), its postings stay (until next reindex).
+   440→- **Missing indexes**: `Document` has no index on `publishedAt` (needed for LATEST mode `ORDER BY publishedAt DESC`), no index on `language` or `country` (filtered queries scan the whole table).
+   441→- **No audit fields**: no `createdBy`, `updatedBy`, `deletedAt` anywhere — can't do soft-delete or audit who crawled what.
+   442→- **`Entity.sourceRefs`** is a JSON string column — should be a separate `EntityRef` table for queryability.
+   443→
+   444→**File:line:** `prisma/schema.prisma:21-194`.
+   445→
+   446→**Fix recommendation:** Add FKs:
+   447→```prisma
+   448→model Document {
+   449→  ...
+   450→  crawlQueueEntry CrawlQueue?  @relation(fields: [url], references: [url])
+   451→  links           Link[]
+   452→}
+   453→model Link {
+   454→  ...
+   455→  sourceDocument Document? @relation(fields: [sourceUrl], references: [url])
+   456→  targetDocument Document? @relation(fields: [targetUrl], references: [url])
+   457→}
+   458→```
+   459→Add indexes:
+   460→```prisma
+   461→@@index([publishedAt])   // for LATEST mode
+   462→@@index([language])      // for filtered queries
+   463→@@index([country])
+   464→```
+   465→Add `deletedAt DateTime?` to Document for soft-delete.
+   466→
+   467→---
+   468→
+   469→### P2-8. Misleading "3-tier live-web fallback" — Tier 1 (BrightData SERP) is dead code
+   470→
+   471→**File:** `src/lib/brightdata.ts:630-638` (`brightDataSerp`), `src/lib/brightdata.ts:640-643` (`isBrightDataSerpWorthIt`), `src/lib/search/tools.ts:586-607`.
+   472→
+   473→**Description:** `brightDataSerp` always returns `null` (no SERP zone configured on the user's BrightData account). `isBrightDataSerpWorthIt` always returns `false`. So `runLiveWebSearch` Tier 1 is dead — every call falls through to Tier 2 (DuckDuckGo). The function names + comments still advertise a 3-tier fallback.
+   474→
+   475→Worse: `brightDataSerp` calls `recordFallback('serp', 'no_serp_zone')` on EVERY call, which **increments `totalFallbacks`** in the budget state. The metrics endpoint shows "fallbacks: 5" even though no BrightData call actually failed — the "fallback" counter is inflated by the always-noop SERP calls.
+   476→
+   477→**Impact:** Misleading to operators reading the budget dashboard. Misleading to contributors reading the code who think they have 3 fallback tiers.
+   478→
+   479→**File:line:** `src/lib/brightdata.ts:630-643`, `src/lib/search/tools.ts:586-607`.
+   480→
+   481→**Fix recommendation:**
+   482→1. Either remove `brightDataSerp` + `isBrightDataSerpWorthIt` entirely (if SERP API is permanently not in scope), OR
+   483→2. Mark them with `@deprecated` + clear comments, AND
+   484→3. Stop calling `recordFallback` when `brightDataSerp` returns null due to "no_serp_zone" — only record a real fallback when BrightData was actually called and actually failed.
+   485→4. Update the `runLiveWebSearch` comment to "2-tier fallback (DuckDuckGo + nothing)".
+   486→
+   487→---
+   488→
+   489→## P3 — Nice-to-have
+   490→
+   491→### P3-1. `tsconfig.json` has `noImplicitAny: false` despite `strict: true`
+   492→
+   493→**File:** `tsconfig.json` line 9 (`"strict": true`) and line 11 (`"noImplicitAny": false`).
+   494→
+   495→**Description:** `strict: true` enables `noImplicitAny` by default — but the project explicitly turns it back off. This is a code-quality regression. Many `any` types in the BrightData route handlers (e.g. `let body: any` in `scrape/route.ts:28`) would be caught.
+   496→
+   497→**Fix recommendation:** Set `"noImplicitAny": true` and fix the resulting type errors (most are in API route handlers — easy fixes with `unknown` + zod parsing).
+   498→
+   499→---
+   500→
+   501→### P3-2. Error message leakage from BrightData API
+   502→
+   503→**File:** `src/lib/brightdata.ts:579` (`error: 'trigger_http_${status}: ${errBody.slice(0, 200)}'`).
+   504→
+   505→**Description:** `brightDataDatasetTrigger` includes the BrightData API response body (up to 200 chars) in the error message. This is then returned to the API caller via `/api/brightdata/datasets` (`detail: result.error`). Confirmed live:
+   506→```
+   507→"detail":"trigger_http_404: Collector not found"
+   508→```
+   509→While not a token leak (the Bearer token is in the request Authorization header, not the response body), it does leak BrightData's internal API error structure.
+   510→
+   511→**Fix recommendation:** Sanitize the error before returning to the caller. Map BrightData's error responses to a fixed set of internal error codes (`brightdata_not_found`, `brightdata_auth_failed`, `brightdata_rate_limited`, `brightdata_unknown_error`).
+   512→
+   513→---
+   514→
+   515→### P3-3. `getClientIP` trusts `x-forwarded-for` blindly
+   516→
+   517→**File:** `src/lib/search/rate-limit.ts:86-92`.
+   518→
+   519→**Description:** `getClientIP` returns the first IP from `x-forwarded-for` header. An attacker can spoof `X-Forwarded-For: 1.2.3.4` on every request to bypass the per-IP rate limit (each request looks like it comes from a different IP). The proper fix is to trust `x-forwarded-for` only if the request came from a trusted proxy (Vercel's edge, Cloudflare, etc.).
+   520→
+   521→**Fix recommendation:** Add a `TRUSTED_PROXY_CIDR` env var. Only honor `x-forwarded-for` if the direct connection IP is in the trusted CIDR. Otherwise use the direct socket IP.
+   522→
+   523→---
+   524→
+   525→### P3-4. `brightDataScrapingBrowserFetch` uses `puppeteer.default.connect` — fragile
+   526→
+   527→**File:** `src/lib/brightdata.ts:322` (`browser = await puppeteer.default.connect(...)`).
+   528→
+   529→**Description:** `puppeteer.default` may be undefined in some ESM interop configurations (depends on the bundler's CJS/ESM interop). The fact that it works today is luck — a Next.js version bump could break it.
+   530→
+   531→**Fix recommendation:** Use a more robust import pattern:
+   532→```ts
+   533→const puppeteerModule = await import('puppeteer-core')
+   534→const puppeteer = puppeteerModule.default ?? puppeteerModule
+   535→browser = await puppeteer.connect({ ... })
+   536→```
+   537→
+   538→---
+   539→
+   540→### P3-5. Indexer rebuilds the entire inverted index on every cache invalidation
+   541→
+   542→**File:** `src/lib/search/indexer.ts:113-128`.
+   543→
+   544→**Description:** `loadIndexIfNeeded` rebuilds `invertedIndex` (a Map of term → posting list) from the `Document.indexTerms` JSON column of every document, every time the cache is invalidated. For 33 docs this is fast (~10ms). For 100k docs, this will be multi-second on every cache miss.
+   545→
+   546→**Fix recommendation:** Persist the inverted index to a SQLite table (`Posting` model with `term`, `docId`, `freq`, `positions`) and update incrementally on each `indexDocument` call. The current "load all docs + rebuild map" pattern doesn't scale.
+   547→
+   548→---
+   549→
+   550→### P3-6. `docLen` uses `wordCount` as approximation in BM25 — biased
+   551→
+   552→**File:** `src/lib/search/indexer.ts:385`.
+   553→
+   554→**Description:** `const docLen = doc.wordCount || 0` — but `wordCount` counts tokens BEFORE stopword removal, while `indexTerms` stores stems AFTER stopword removal. The BM25 length normalization is therefore biased: long docs with many stopwords look artificially shorter than they are.
+   555→
+   556→**Fix recommendation:** Store the actual post-stopword-removal token count in a new `Document.indexedTokenCount` column at index time, and use that for `docLen`.
+   557→
+   558→---
+   559→
+   560→## What's working well
+   561→
+   562→These things are genuinely good — credit where it's due:
+   563→
+   564→1. **Zero-cost guarantee design is solid.** The `BudgetGuard` in `brightdata.ts` has: file-persisted counters, daily/monthly caps, rollover logic (resets dailyCount when date changes — verified by code review at lines 147-154), disable-on-auth-fail window, persistent file at `/tmp/cirkle-brightdata-budget.json`. The design is production-quality. (Note: the file-based counter has a race condition — see P2-6. But the design intent is correct.)
+   565→
+   566→2. **BrightData token is NOT leaked in any API response.** Confirmed by grepping responses for the token prefix `9a86a02e` — zero matches across `/api/brightdata/scrape`, `/api/brightdata/snapshot/[id]`, `/api/brightdata/datasets`, `/api/brightdata/status`. The token is only used in the `Authorization` header for outbound BrightData calls.
+   567→
+   568→3. **`.env` is correctly gitignored.** `.gitignore` line 34 has `.env*` — covers `.env`, `.env.local`, `.env.production`, etc. Good practice.
+   569→
+   570→4. **Lint is clean.** `bun run lint` returns 0 errors, 0 warnings. Code style is consistent.
+   571→
+   572→5. **Rate limiting works correctly.** Confirmed by prior audit: 200s for first 25 requests, then 429s. Cap is 30/min (burst) + 100/5min (sustained). Sliding-window implementation in `rate-limit.ts` is correct.
+   573→
+   574→6. **Sticky footer works on desktop AND mobile.** Verified live with agent-browser:
+   575→   - Desktop: `pageH=1001, footerBottom=1001.3, footerAtBottom=true`
+   576→   - Mobile (375x600): `pageH=978, footerBottom=977.5, footerAtBottom=true`
+   577→   The "Natural Push on Overflow" UX goal is satisfied.
+   578→
+   579→7. **UI renders the (bad) top result correctly.** Console errors are clean (only React DevTools + HMR info). No JavaScript errors on home page or search results page.
+   580→
+   581→8. **BM25 implementation in `indexer.ts:234-248` is mathematically correct.** The IDF formula `log(1 + (N - df + 0.5) / (df + 0.5))` is the standard BM25 IDF. The TF saturation with `k1=1.2, b=0.75` uses industry-standard defaults. The bug is NOT in BM25 itself — it's in how the unbounded BM25 score is fed into the ranking formula (P0-3).
+   582→
+   583→9. **Inverted index lookup is O(matching docs), not O(all docs).** `indexer.ts:115-127` builds a term→posting-list map at cache-load time, so a query for "Steve Jobs" only iterates over docs that contain "steve" or "job", not all 33 docs. Good engineering.
+   584→
+   585→10. **Query understanding + 9 ranking modes.** The `ranking.ts` mode switch (BALANCED, EXACT, LATEST, RESEARCH, OFFICIAL, ACADEMIC, COMMUNITY, NEWS, IMAGES) with mode-specific weight coefficients is a thoughtful design. The freshness-keyword detection (lines 224-226) is a nice touch. The weights themselves are broken (P0-3) but the structure is right.
+   586→
+   587→11. **Sponsored results are isolated from organic ranking.** `SponsoredAd` model is a separate table, never mixed into the BM25 pipeline. Good — this is the right architectural choice for ad-transparency.
+   588→
+   589→12. **Robots.txt compliance + sitemap parsing.** `crawler.ts` has a real robots.txt fetcher (with 1h TTL cache) and a sitemap parser that handles nested sitemap indexes (depth-limited to 3). The path-matching algorithm (longest-allow vs longest-disallow) is the correct robots.txt spec interpretation.
+   590→
+   591→13. **Search response cache (LRU + 5-min TTL).** `index.ts` caches the full SearchResponse for repeated queries. Tier 1 is in-memory (sub-ms), Tier 2 is Neon (fire-and-forget write because Neon cold-cache latency in the sandbox). Good design — though the Neon read path is commented out (line 547) which means Tier 2 is currently write-only.
+   592→
+   593→14. **The search route is a thin, well-typed wrapper.** `src/app/api/search/route.ts` validates mode, filters, query length — then delegates to `search()` in `src/lib/search/index.ts`. Clean separation of HTTP layer from business logic.
+   594→
+   595→15. **The BrightData "scraping browser via wss" integration is genuinely cool.** Using `puppeteer-core` to drive BrightData's remote Chrome over a WebSocket endpoint — no local Chromium download, no Playwright install — is a clean way to get JS-rendered scrapes without the ops burden of running a browser farm.
+   596→
+   597→---
+   598→
+   599→## Recommendations — 30/60/90 day plan
+   600→
+   601→### Days 0-30 (must do before any user traffic)
+   602→
+   603→1. **Fix P0-1** (unauthenticated BrightData endpoints). Add Bearer auth + SSRF allow-list + per-IP rate limit. ~4 hours of work.
+   604→2. **Fix P0-2** (broken metrics). Move `state` to SQLite. ~1 day of work (including the test).
+   605→3. **Fix P0-3** (BM25 score normalization). Normalize `lex` and `sem` to [0,1] before the linear formula. ~4 hours + a relevance test.
+   606→4. **Fix P1-1** (live-web fallback gating). Change the gate to "trigger if top-3 mean score < 0.3". ~2 hours.
+   607→5. **Fix P1-2** (dead code in tool-path metrics). Move `recordSearch` above the `return`. ~15 minutes.
+   608→6. **Fix P1-3** (remove z-ai-web-dev-sdk). `bun remove z-ai-web-dev-sdk` + update 5 comments. ~15 minutes.
+   609→7. **Start P1-4** (test framework). Install vitest + playwright. Write the relevance test that would have caught P0-3. ~2 days.
+   610→8. **Grow the index from 33 → 1,000+ docs.** Ingest Wikipedia entities for the top-1000 most-searched entities (people, companies, places). Without this, no amount of ranking tweaking will fix relevance. ~1 week of crawler work.
+   611→
+   612→### Days 30-60 (beta-quality)
+   613→
+   614→1. **Finish P1-4** (test framework) — get to 80%+ unit test coverage on `lib/search/` and e2e tests for the 5 most important user journeys.
+   615→2. **Fix P2-1** (`tookMs` + `totalFound` in response).
+   616→3. **Fix P2-2** (structured logging in BrightData fallback).
+   617→4. **Fix P2-3** (CI/CD with GitHub Actions).
+   618→5. **Fix P2-4 + P2-5** (README + .env.example).
+   619→6. **Fix P2-6** (BrightData budget race condition — move to SQLite-backed counter).
+   620→7. **Fix P2-7** (Prisma FKs + cascades + indexes).
+   621→8. **Fix P2-8** (remove dead BrightData SERP tier).
+   622→9. **Implement a real semantic layer.** The current `semanticBoost` is a lexical proxy (cosine of overlapping idf-weighted term sets — line 132-138). For real semantic search, add embeddings: store a 384-dim MiniLM embedding per doc in a `Document.embedding` BLOB column, compute cosine similarity at query time. This is the single biggest relevance lever after index size.
+   623→10. **Implement query rewriting.** For "Steve Jobs", expand to "Steve Jobs co-founder Apple Pixar NeXT" before BM25 — this would surface Apple-related docs in the index even if the user only typed the entity name.
+   624→
+   625→### Days 60-90 (production-quality)
+   626→
+   627→1. **Fix all P3s** (tsconfig, error sanitization, x-forwarded-for trust, puppeteer import, indexer scale, docLen bias).
+   628→2. **Load test.** Use k6 to fire 1000 concurrent searches. Identify the bottleneck (likely the whole-index reload on cache miss — P3-5).
+   629→3. **Add a health endpoint.** `/api/health` returning `{status: 'ok', db: 'ok', brightdata: 'ok', indexSize: N}` for uptime monitoring.
+   630→4. **Add a `/api/budget` operator dashboard.** Show BrightData daily/monthly consumption graph, fallback rate, top queries by BrightData spend.
+   631→5. **Grow the index to 10,000+ docs.** Crawl top-10k Alexa sites + Wikipedia + major news RSS feeds continuously.
+   632→6. **Add a reindex job.** A daily cron that re-runs `indexDocument` on any Document whose `contentHash` changed since last index (for freshness).
+   633→7. **Set up error monitoring.** Sentry or equivalent — capture the swallowed BrightData errors (P2-2) and surface them in a dashboard.
+   634→8. **Documentation site.** Convert the inline comments into a proper docs site (Docusaurus or GitBook).
+   635→
+   636→---
+   637→
+   638→## Architecture assessment
+   639→
+   640→**Layering:** Reasonably clean. The dependency direction is:
+   641→```
+   642→UI (components/search/*)
+   643→  → API routes (app/api/*/route.ts) — thin HTTP wrappers
+   644→    → Search pipeline (lib/search/index.ts) — orchestrator
+   645→      → Retrieval (lib/search/indexer.ts) — BM25 + inverted index
+   646→      → Ranking (lib/search/ranking.ts) — mode-specific weighting
+   647→      → Tools (lib/search/tools.ts) — instant answers + live-web fallback
+   648→      → AI (lib/search/ai-search.ts) — summary + knowledge card
+   649→      → Crawlers (lib/search/crawler.ts, lib/brightdata.ts) — content acquisition
+   650→      → Storage (Prisma schema + lib/db.ts) — persistence
+   651→```
+   652→No circular dependencies detected. Each layer has a clear responsibility.
+   653→
+   654→**Coupling:** Moderate. The `search()` function in `index.ts` is 470 lines and orchestrates everything — it's becoming a god function. Consider splitting into `searchPipeline.ts` (orchestration) + `searchCache.ts` (cache layer) + `searchHistory.ts` (personalization). The BrightData integration is well-isolated (single `lib/brightdata.ts` file, ~660 lines, clear public API).
+   655→
+   656→**Scalability:**
+   657→- **Index size:** The "load all docs into memory + rebuild inverted index" pattern (`indexer.ts:89-130`) works for ~10k docs. Beyond that, you need a persistent inverted index (P3-5 fix) or a real search backend (MeiliSearch, Typesense, Elasticsearch, or Postgres full-text with `tsvector`).
+   658→- **Concurrency:** The in-memory rate limiter (`rate-limit.ts`) is per-process — won't work across multiple serverless instances. The BrightData budget counter is file-based so it survives across instances (good), but has a race condition (P2-6).
+   659→- **Cold starts:** Every serverless cold start resets the metrics state (P0-2) and reloads the entire index from SQLite (~10ms for 33 docs, ~seconds for 10k docs). Consider a warmup endpoint or a persistent worker.
+   660→
+   661→**Tech debt:** Moderate. The ranking formula's assumption of normalized scores (P0-3) is the biggest piece of hidden debt — it makes the entire relevance tuning effort a moving target until fixed. The dead `z-ai-web-dev-sdk` dep (P1-3) and dead BrightData SERP tier (P2-8) are minor. The schema's missing FKs (P2-7) will hurt more as the data grows.
+   662→
+   663→**Security posture:** Weak. The 3 unauthenticated BrightData endpoints (P0-1) are the biggest hole. The blind trust of `x-forwarded-for` (P3-3) is a secondary issue. The token is well-protected (not leaked in responses), and the `.env` is gitignored — so the secrets hygiene is good. The auth GAP is the problem.
+   664→
+   665→**Verdict:** Architecturally credible demo, not yet a defensible product. With 2 weeks of focused work on the P0s + P1s + index growth, this could become a credible beta. With 90 days of work on the P2s + P3s + semantic embeddings, it could become a credible product. The bones are good; the meat is missing.
+   666→
+   667→---
+   668→
+   669→## Files audit summary
+   670→
+   671→| File | Status | Notes |
+   672→|---|---|---|
+   673→| `src/lib/brightdata.ts` | ⚠️ Mixed | Budget guard design is solid; race condition (P2-6); dead SERP tier (P2-8); error leakage (P3-2); `puppeteer.default` fragility (P3-4). |
+   674→| `src/app/api/brightdata/scrape/route.ts` | 🔴 P0 | No auth, no SSRF block, no rate limit (P0-1). |
+   675→| `src/app/api/brightdata/snapshot/[id]/route.ts` | 🔴 P0 | No auth (P0-1). Path param is forwarded to BrightData (not used for local file access — no SSRF). |
+   676→| `src/app/api/brightdata/datasets/route.ts` | 🔴 P0 | No auth (P0-1). Error leakage from BrightData (P3-2). |
+   677→| `src/app/api/brightdata/status/route.ts` | ✅ OK | Read-only, no sensitive data exposed. |
+   678→| `src/lib/search/crawler.ts` | ⚠️ Mixed | Real fetcher + robots.txt + sitemap parser all working. BrightData fallback errors swallowed (P2-2). |
+   679→| `src/lib/search/tools.ts` | ⚠️ Mixed | Instant-answer tools (weather/time/math) good. Live-web fallback gated out (P1-1). Dead BrightData SERP tier (P2-8). |
+   680→| `prisma/schema.prisma` | ⚠️ Mixed | Models are reasonable. No FKs, no cascades, missing indexes (P2-7). |
+   681→| `src/lib/search/ranking.ts` | 🔴 P0 | BM25 score not normalized → clamp01 destroys discrimination (P0-3). Mode-weight structure is good. |
+   682→| `src/lib/search/indexer.ts` | ⚠️ Mixed | BM25 math correct. Inverted index lookup is fast. `docLen` uses wrong field (P3-6). Whole-index reload on cache miss (P3-5). |
+   683→| `src/app/api/metrics/route.ts` | 🔴 P0 | Reads from broken module-scoped state (P0-2). |
+   684→| `src/lib/search/metrics.ts` | 🔴 P0 | Module-scoped state not shared across module instances (P0-2). Fix: move to SQLite. |
+   685→| `src/lib/search/index.ts` | ⚠️ Mixed | 1189-line orchestrator. Dead code after `return` (P1-2). Missing `tookMs`/`totalFound` (P2-1). Search cache (LRU + Neon) design is good. |
+   686→| `src/app/api/search/route.ts` | ✅ OK | Thin, well-typed wrapper. Rate limit applied correctly. Stale z-ai-web-dev-sdk comment (P1-3). |
+   687→| `src/lib/search/rate-limit.ts` | ⚠️ P3 | Sliding-window logic correct. Trusts `x-forwarded-for` blindly (P3-3). |
+   688→| `package.json` | ⚠️ P1 | Dead dep `z-ai-web-dev-sdk` (P1-3). No test framework (P1-4). |
+   689→| `tsconfig.json` | ⚠️ P3 | `strict: true` but `noImplicitAny: false` (P3-1). |
+   690→| `.gitignore` | ✅ OK | `.env*` correctly ignored. |
+   691→| `.env.example` | 🔴 P2 | Missing (P2-5). |
+   692→| `README.md` | 🔴 P2 | Missing (P2-4). |
+   693→| `.github/workflows/` | 🔴 P2 | Missing — no CI/CD (P2-3). |
+   694→
+   695→---
+   696→
+   697→**End of report.** This audit was conducted in a single session via parallel code inspection + functional probing (curl + agent-browser). All P0 and most P1 findings were verified live against a running dev server at `http://localhost:3000`. The report is intentionally honest — the user asked for "detailed recommendations and audit results honestly", and the relevance + security + observability gaps documented above are real and reproducible. Fix the P0s first; they're worth more than all the P3s combined.
+   698→

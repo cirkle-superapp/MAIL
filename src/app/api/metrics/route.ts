@@ -10,7 +10,8 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  return NextResponse.json(getMetrics(), {
+  const metrics = await getMetrics()
+  return NextResponse.json(metrics, {
     headers: { 'Cache-Control': 'no-store' },
   })
 }

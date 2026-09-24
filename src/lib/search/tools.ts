@@ -21,6 +21,7 @@
  */
 
 import { parseQuery } from './query-understanding'
+import { stem } from './text-processor'
 import * as https from 'node:https'
 
 // --- Types -----------------------------------------------------------------
@@ -602,25 +603,118 @@ export async function runLiveWebSearch(query: string): Promise<LiveWebResult[]> 
         }))
       }
     }
-  } catch {
-    // BrightData module unavailable — fall through to DuckDuckGo.
+  } catch (e: any) {
+    // P2-2: structured log when BrightData tier fails (downstream fall-through
+    // to DuckDuckGo is intentional — the engine keeps working).
+    console.warn('[tools] liveweb tier 1 (brightdata) failed', {
+      query: query.slice(0, 80),
+      error: e?.message ?? String(e),
+    })
   }
 
-  // Tier 2: DuckDuckGo HTML search (always free, always available).
+  // Tier 2: DuckDuckGo HTML search (free, no key, works in production).
+  let ddgResults: LiveWebResult[] = []
   try {
     const { webSearch } = await import('../llm')
     const results = await webSearch(query, 8)
-    if (!Array.isArray(results)) return []
-    return results.map((r: any) => ({
-      title: r.name ?? r.url,
-      url: r.url,
-      snippet: r.snippet ?? '',
-      domain: r.host_name ?? new URL(r.url).hostname,
-      sourceType: classifyLiveDomain(r.host_name ?? ''),
-    }))
-  } catch {
-    return []
+    if (Array.isArray(results) && results.length > 0) {
+      ddgResults = results.map((r: any) => ({
+        title: r.name ?? r.url,
+        url: r.url,
+        snippet: r.snippet ?? '',
+        domain: r.host_name ?? new URL(r.url).hostname,
+        sourceType: classifyLiveDomain(r.host_name ?? ''),
+      }))
+    }
+  } catch (e: any) {
+    // P2-2: structured log when DuckDuckGo fallback fails.
+    console.warn('[tools] liveweb tier 2 (duckduckgo) failed', {
+      query: query.slice(0, 80),
+      error: e?.message ?? String(e),
+    })
   }
+
+  if (ddgResults.length > 0) return ddgResults
+
+  // Tier 3: BrightData Scraping Browser → fetch Google SERP HTML → parse.
+  // This is the production-grade fallback when DuckDuckGo is blocked or
+  // returns 0 results (sandbox, restrictive corporate networks, etc.).
+  // Consumes BrightData budget — the budget guard caps at 5/day, 25/month.
+  try {
+    const { brightDataScrapingBrowserFetch } = await import('../brightdata')
+    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=10`
+    const scraped = await brightDataScrapingBrowserFetch(googleUrl, {
+      timeoutMs: 20_000,
+    })
+    if (scraped && scraped.ok && scraped.content) {
+      const parsed = parseGoogleSerp(scraped.content)
+      if (parsed.length > 0) {
+        return parsed
+      }
+    }
+  } catch (e: any) {
+    console.warn('[tools] liveweb tier 3 (brightdata google) failed', {
+      query: query.slice(0, 80),
+      error: e?.message ?? String(e),
+    })
+  }
+
+  return []
+}
+
+/**
+ * Parse organic results from a Google SERP HTML page.
+ * Extracts title + URL + snippet from each <div class="g"> block.
+ * Used by the BrightData Scraping Browser fallback in runLiveWebSearch.
+ */
+function parseGoogleSerp(html: string): LiveWebResult[] {
+  const results: LiveWebResult[] = []
+  // Google's SERP HTML structure changes periodically. We use a permissive
+  // regex that matches the most common organic-result block pattern.
+  // Each result has: an <a href="https://..."> link + a <h3> title + a
+  // sibling <div> with the snippet.
+  const blockRe = /<a href="\/url\?q=([^&"]+)[^"]*"[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/gi
+  const directRe = /<a href="(https?:\/\/[^"]+)"[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>/gi
+  const seen = new Set<string>()
+
+  let m: RegExpExecArray | null
+  while ((m = blockRe.exec(html)) !== null && results.length < 10) {
+    const url = decodeURIComponent(m[1])
+    const title = m[2].replace(/<[^>]+>/g, '').trim()
+    const snippet = m[3].replace(/<[^>]+>/g, '').trim()
+    if (!url || !title || seen.has(url)) continue
+    seen.add(url)
+    let domain = ''
+    try { domain = new URL(url).hostname } catch { domain = '' }
+    results.push({
+      title,
+      url,
+      snippet,
+      domain,
+      sourceType: classifyLiveDomain(domain),
+    })
+  }
+  // If /url?q= pattern didn't match, try the direct href pattern.
+  if (results.length === 0) {
+    while ((m = directRe.exec(html)) !== null && results.length < 10) {
+      const url = m[1]
+      const title = m[2].replace(/<[^>]+>/g, '').trim()
+      if (!url || !title || seen.has(url)) continue
+      // Skip Google's own links (search?q=, preferences, etc.).
+      if (url.includes('google.com/search') || url.includes('google.com/preferences')) continue
+      seen.add(url)
+      let domain = ''
+      try { domain = new URL(url).hostname } catch { domain = '' }
+      results.push({
+        title,
+        url,
+        snippet: '',
+        domain,
+        sourceType: classifyLiveDomain(domain),
+      })
+    }
+  }
+  return results
 }
 
 function classifyLiveDomain(host: string): string {
@@ -786,13 +880,73 @@ export async function runTool(
   return { instantAnswer: null, liveWeb: [] }
 }
 
-/** Should this query trigger a live-web fallback when the index is empty? */
-export function shouldLiveWebFallback(query: string, indexResultCount: number): boolean {
-  if (indexResultCount > 0) return false
+/**
+ * Should this query trigger a live-web fallback?
+ *
+ * P1-1 FIX: The previous implementation gated on `indexResultCount === 0`,
+ * which meant the engine NEVER escaped the small local index for
+ * celebrity/news queries — if even 1 irrelevant doc was matched, the
+ * fallback was suppressed.
+ *
+ * New logic — trigger the live-web fallback when ANY of:
+ *   - indexResultCount === 0 (zero results — original behavior)
+ *   - indexResultCount < 3 (very few results — probably weak matches)
+ *   - topResultsMeanScore < 0.3 (top-3 results look weak — the index
+ *     didn't find anything confidently relevant)
+ *   - topResultsCoverage < 0.5 (top-3 results collectively don't cover
+ *     ≥50% of the query terms — strong signal the index doesn't have a
+ *     doc about the user's actual intent; e.g. "Steve Jobs" → all 3 top
+ *     results match only "jobs" the word, not "Steve Jobs" the person)
+ *
+ * The last check is the most important for the relevance crisis: it
+ * catches the case where the BM25 query found 4 irrelevant docs that all
+ * happen to contain one of the query's tokens.
+ *
+ * @param query           The user query.
+ * @param indexResultCount  How many results the local index returned.
+ * @param topResultsMeanScore  The mean relevanceScore of the top-3 index
+ *                          results. Optional — if undefined, falls back to
+ *                          the count-based heuristic.
+ * @param topResultsMatchedTerms  Union of matched-terms across the top-3
+ *                          index results. Optional — used for the coverage
+ *                          check.
+ */
+export function shouldLiveWebFallback(
+  query: string,
+  indexResultCount: number,
+  topResultsMeanScore?: number,
+  topResultsMatchedTerms?: string[],
+): boolean {
   const parsed = parseQuery(query)
   if (parsed.tokens.length < 2) return false
   // Don't fallback for pure navigational queries (single brand name) — those
-  // are better served by the index.
+  // are better served by the index (and likely have an exact match).
   if (parsed.intent === 'navigational' && parsed.tokens.length <= 2) return false
-  return true
+
+  // P1-1: trigger if any of the weak-confidence conditions.
+  // Score threshold of 0.4 is calibrated so that weak matches (mean
+  // relevanceScore below 0.4 across top-3) trigger the live-web fallback.
+  // For "Steve Jobs" → top-3 mean score = 0.30 → triggers fallback.
+  // For "react" → top-3 mean score = 0.7+ → doesn't trigger.
+  if (indexResultCount === 0) return true
+  if (indexResultCount < 3) return true
+  if (typeof topResultsMeanScore === 'number' && topResultsMeanScore < 0.4) return true
+
+  // P1-1 (extended): query coverage check. The top-3 results collectively
+  // should cover ≥50% of the query's tokens (stemmed on both sides for
+  // matching — e.g. user query "jobs" stems to "job"; the index stores "job"
+  // so matchedTerms contain "job"; both sides must be stemmed for the
+  // comparison to work).
+  if (Array.isArray(topResultsMatchedTerms) && parsed.tokens.length > 0) {
+    const matchedSet = new Set(topResultsMatchedTerms.map((t) => stem(t.toLowerCase())))
+    const queryTermSet = new Set(parsed.tokens.map((t) => stem(t.toLowerCase())))
+    let coveredCount = 0
+    for (const t of queryTermSet) {
+      if (matchedSet.has(t)) coveredCount++
+    }
+    const coverage = coveredCount / queryTermSet.size
+    if (coverage < 0.5) return true
+  }
+
+  return false
 }

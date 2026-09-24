@@ -18,7 +18,8 @@
  *   - getSource(id), getStats()
  *       Helpers for /api/source/[id] and /api/stats endpoints.
  *
- * z-ai-web-dev-sdk usage is server-side only.
+ * All LLM traffic flows through the unified LLM client at `@/lib/llm`
+ * (Groq → Gemini → OpenRouter fallback chain). Server-side only.
  * -----------------------------------------------------------------------------
  */
 
@@ -166,6 +167,8 @@ export interface IndexStats {
 export interface SearchResponse {
   query: string
   interpretedQuery: string
+  tookMs: number // P2-1: search latency in ms
+  totalFound: number // P2-1: total matching docs from index (pre-pagination)
   instantAnswer: InstantAnswer | null
   liveWebResults: LiveWebResult[]
   aiAnswer: AISearchResult | null
@@ -540,8 +543,13 @@ export async function search(
   // Tier 1: LRU in-memory cache (< 1ms, lost on restart)
   const cached = getSearchCache(cacheKey)
   if (cached) {
-    recordSearch({ query, mode, latencyMs: Date.now() - _searchStart, resultCount: cached.results?.length ?? 0, cacheHit: true, toolUsed: cached.instantAnswer?.kind ?? null })
-    return { ...cached, query }
+    void recordSearch({ query, mode, latencyMs: Date.now() - _searchStart, resultCount: cached.results?.length ?? 0, cacheHit: true, toolUsed: cached.instantAnswer?.kind ?? null })
+    return {
+      ...cached,
+      query,
+      tookMs: Date.now() - _searchStart, // P2-1: report real latency for cache hits too
+      totalFound: cached.pagination?.totalResults ?? cached.results?.length ?? 0,
+    }
   }
 
   // NOTE: Neon persistent cache READ is intentionally NOT in the hot path.
@@ -566,28 +574,23 @@ export async function search(
       const fastStats = getStatsFast()
       if (fastStats) Object.assign(indexStats, fastStats)
     } catch { /* ignore */ }
+
+    // P1-2: record tool-path metrics BEFORE the return — the previous code
+    // had an unreachable recordSearch + duplicate return block here.
+    void recordSearch({
+      query,
+      mode,
+      latencyMs: Date.now() - _searchStart,
+      resultCount: 0,
+      cacheHit: false,
+      toolUsed: toolResult.instantAnswer.kind,
+    })
+
     return {
       query,
       interpretedQuery: parsed.tokens.join(' '),
-      instantAnswer: toolResult.instantAnswer,
-      liveWebResults: [],
-      aiAnswer: null,
-      knowledgeCard: null,
-      sponsored: [],
-      results: [],
-      clusters: [],
-      relatedQuestions: [],
-      didYouMean: null,
-      pagination: { page: 1, pageSize: 10, totalResults: 0, totalPages: 1 },
-      personalized: false,
-      personalizationFactors: [],
-      indexStats,
-    }
-    // Record tool-path metrics.
-    recordSearch({ query, mode, latencyMs: Date.now() - _searchStart, resultCount: 0, cacheHit: false, toolUsed: toolResult.instantAnswer.kind })
-    return {
-      query,
-      interpretedQuery: parsed.tokens.join(' '),
+      tookMs: Date.now() - _searchStart, // P2-1
+      totalFound: 0,                      // P2-1: tool path — no index hits
       instantAnswer: toolResult.instantAnswer,
       liveWebResults: [],
       aiAnswer: null,
@@ -894,12 +897,28 @@ export async function search(
   const instantAnswer: InstantAnswer | null = null
 
   // --- Live web fallback (spec §69 supplementary source) ------------------
-  // If the local index returned 0 results AND the query is substantive (≥2
-  // tokens, not pure-navigational), fetch fresh web results via the
-  // web_search SDK function. These are clearly labeled as supplementary
-  // live results, NOT mixed with the organic index.
+  // P1-1: trigger when index results are weak (count < 3 OR top-3 mean score
+  // < 0.3 OR query coverage < 50%), not just when count === 0. This lets the
+  // engine escape the small local index for celebrity/news queries where the
+  // BM25 query happens to match an irrelevant doc.
   let liveWebResults: LiveWebResult[] = []
-  if (shouldLiveWebFallback(query, finalRanked.length)) {
+  const topThree = finalRanked.slice(0, 3)
+  const topMeanScore = topThree.length > 0
+    ? topThree.reduce((s, r) => s + r.relevanceScore, 0) / topThree.length
+    : 0
+  // P1-1 (extended): union of matched terms across top-3 — for coverage check.
+  // We map back from finalRanked.docId → candidates[].hit.matchedTerms.
+  const candidateByDocId = new Map(candidates.map((c) => [c.doc.id, c]))
+  const topMatchedTerms: string[] = []
+  for (const r of topThree) {
+    const c = candidateByDocId.get(r.docId)
+    if (c?.hit?.matchedTerms) {
+      for (const t of c.hit.matchedTerms) {
+        if (!topMatchedTerms.includes(t)) topMatchedTerms.push(t)
+      }
+    }
+  }
+  if (shouldLiveWebFallback(query, finalRanked.length, topMeanScore, topMatchedTerms)) {
     try {
       liveWebResults = await runLiveWebSearch(query)
     } catch {
@@ -952,6 +971,8 @@ export async function search(
   const response: SearchResponse = {
     query,
     interpretedQuery,
+    tookMs: Date.now() - _searchStart, // P2-1
+    totalFound: finalRanked.length,    // P2-1: total matching docs from index (pre-pagination)
     instantAnswer,
     liveWebResults,
     aiAnswer,
@@ -987,7 +1008,7 @@ export async function search(
   } catch { /* Neon unavailable — non-critical */ }
 
   // Record metrics for observability (§66).
-  recordSearch({
+  void recordSearch({
     query,
     mode,
     latencyMs: Date.now() - _searchStart,

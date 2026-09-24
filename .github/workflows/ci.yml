@@ -1,0 +1,37 @@
+# .github/workflows/ci.yml
+# -----------------------------------------------------------------------------
+# CI pipeline for the CIRKLE search engine.
+#
+# Runs on every push to main/master + every pull request. Enforces:
+#   - ESLint (zero warnings, zero errors)
+#   - Prisma client generation (db:generate)
+#   - Unit tests (vitest run)
+#
+# Notes:
+#   - We do NOT run `bun run build` in CI — Next.js production builds are
+#     slow (~2min) and the build is already exercised by Vercel on deploy.
+#     Lint + db:generate + test are enough to catch the most common
+#     regressions on PR.
+#   - We use `bun install --frozen-lockfile` for reproducible installs.
+#   - The live tests (tests/api-*.test.ts, tests/relevance.test.ts) are
+#     auto-skipped in CI because no dev server is running on the runner —
+#     they only run against a local dev server. The unit tests
+#     (tests/ranking.test.ts, tests/budget-guard.test.ts) provide the
+#     regression protection in CI.
+# -----------------------------------------------------------------------------
+name: CI
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run db:generate
+      - run: bun run test

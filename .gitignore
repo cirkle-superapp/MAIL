@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# P2-5: explicitly track the .env.example template so new contributors
+# have a documented starting point. The actual .env with real secrets
+# remains gitignored by the .env* pattern above.
+!.env.example
 
 # vercel
 .vercel

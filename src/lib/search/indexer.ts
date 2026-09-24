@@ -62,6 +62,8 @@ interface CachedDoc {
   clusterId: string | null
   indexTerms: string | null
   wordCount: number
+  // P3-6: post-stopword-removal token count — used for accurate BM25 docLen.
+  indexedTokenCount?: number
   snippet: string
   author: string | null
   publisher: string | null
@@ -103,6 +105,8 @@ async function loadIndexIfNeeded(force = false): Promise<CachedDoc[]> {
         crawledAt: true, qualityScore: true, spamScore: true, isOriginal: true,
         clusterId: true, indexTerms: true, wordCount: true, snippet: true,
         author: true, publisher: true, ogImage: true,
+        // P3-6: needed for accurate BM25 docLen.
+        indexedTokenCount: true,
       },
     })
     loadedDocs = rows
@@ -206,7 +210,13 @@ export async function indexDocument(
   const json = JSON.stringify(postings)
   await db.document.update({
     where: { id: docId },
-    data: { indexTerms: json },
+    data: {
+      indexTerms: json,
+      // P3-6: store the post-stopword-removal token count for accurate
+      // BM25 docLen. wordCount includes stopwords (over-counts); this
+      // field is the actual indexed-token count (under-counts stopwords).
+      indexedTokenCount: stemmed.length,
+    },
   })
 
   // Invalidate caches — the next query will refresh.
@@ -377,12 +387,10 @@ export async function queryIndex(
     }
 
     // Compute doc length (sum of all term freqs for this doc).
-    // We need the doc's total term count — read from the doc's indexTerms.
-    // But we already have the inverted index; we can compute doc length
-    // from the per-doc postings stored in loadedDocs (which has indexTerms).
-    // For speed, use wordCount as an approximation (it's the token count
-    // before stopword removal, but close enough for BM25 normalization).
-    const docLen = doc.wordCount || 0
+    // P3-6: prefer indexedTokenCount (post-stopword-removal count) — the
+    // accurate BM25 docLen. Fall back to wordCount for legacy docs that
+    // haven't been reindexed since the column was added.
+    const docLen = doc.indexedTokenCount || doc.wordCount || 0
 
     let score = 0
     for (const term of entry.matchedTerms) {

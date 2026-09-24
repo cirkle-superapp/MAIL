@@ -18,7 +18,7 @@
  *   - Trigger the seed crawler when the index is empty.
  *   - Load /api/stats for the IndexStatusBar.
  *
- * This module is pure client-side — no Prisma, no z-ai-web-dev-sdk.
+ * This module is pure client-side — no Prisma, no LLM client.
  * -----------------------------------------------------------------------------
  */
 

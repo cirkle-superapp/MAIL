@@ -4,25 +4,18 @@
  * Trigger a BrightData dataset snapshot + bulk-ingest the rows into the
  * search index (CrawlQueue → indexer → Document rows).
  *
- * Body:
- *   { datasetId: string, maxRows?: number }
+ * Body: { datasetId: string, maxRows?: number }
  *
- * The BrightData dataset is created in BrightData's web UI by the operator
- * (a one-time setup). The dataset returns rows of structured data — for the
- * search engine, the operator typically configures the dataset to include a
- * `url` column (and optionally `title`, `description`, `publishedAt`). The
- * ingester enqueues these URLs into CrawlQueue for the normal crawler pipeline.
- *
- * Zero-cost guarantee: this endpoint respects the budget guard. If the budget
- * is exhausted (no token, daily cap hit, monthly cap hit), the endpoint
- * returns 503 with `code: 'budget_exhausted'` and the operator can retry
- * tomorrow.
- *
- * Auth: simple Bearer token via BRIGHTDATA_OPERATOR_TOKEN env (optional). If
- * unset, the endpoint is open (read-only trigger — safe in dev).
+ * SECURITY (P0-1): requires BRIGHTDATA_OPERATOR_TOKEN + Bearer auth.
+ * Zero-cost guarantee: respects the budget guard. Returns 503 with
+ * `code: 'budget_exhausted'` if the daily/monthly cap is hit.
  */
 import { NextResponse } from 'next/server'
 import { brightDataDatasetTrigger, getBudgetSnapshot } from '@/lib/brightdata'
+import {
+  requireOperator,
+  sanitizeBrightDataError,
+} from '@/lib/brightdata-auth'
 import { db } from '@/lib/db'
 import { canonicalizeUrl, extractDomain } from '@/lib/search/canonical'
 
@@ -31,6 +24,12 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 export async function POST(req: Request) {
+  // --- Auth + rate limit (P0-1) ---
+  const authFail = requireOperator(req)
+  if (authFail) {
+    return NextResponse.json(authFail.body, { status: authFail.status })
+  }
+
   let body: any
   try {
     body = await req.json()
@@ -38,9 +37,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid_json' }, { status: 400 })
   }
   const datasetId: string | undefined = body?.datasetId
-  if (!datasetId || typeof datasetId !== 'string') {
+  if (!datasetId || typeof datasetId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(datasetId)) {
     return NextResponse.json(
-      { error: 'missing_datasetId' },
+      { error: 'missing_or_invalid_datasetId' },
       { status: 400 },
     )
   }
@@ -49,13 +48,12 @@ export async function POST(req: Request) {
     5000,
   )
 
-  // Trigger the BrightData dataset snapshot.
   const result = await brightDataDatasetTrigger(datasetId, { maxRows })
   if (!result.ok) {
     return NextResponse.json(
       {
         error: 'dataset_failed',
-        detail: result.error,
+        code: sanitizeBrightDataError(result.error),
         snapshotId: result.snapshotId,
         budget: getBudgetSnapshot(),
       },
@@ -63,9 +61,6 @@ export async function POST(req: Request) {
     )
   }
 
-  // Bulk-ingest the rows into CrawlQueue.
-  // The dataset is expected to have a `url` column. Other columns (title,
-  // description, publishedAt, etc.) are stored as discovery metadata.
   let enqueued = 0
   let skipped = 0
   for (const row of result.rows) {

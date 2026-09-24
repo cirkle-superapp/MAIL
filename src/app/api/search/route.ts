@@ -12,7 +12,7 @@ import { search } from '@/lib/search'
 import { checkRateLimit, getClientIP } from '@/lib/search/rate-limit'
 import type { SearchMode, SearchFilters } from '@/lib/search/ranking'
 
-export const runtime = 'nodejs' // Prisma + z-ai-web-dev-sdk require Node.
+export const runtime = 'nodejs' // Prisma + LLM client (../llm) require Node.
 export const dynamic = 'force-dynamic'
 
 const ALLOWED_MODES: SearchMode[] = [
