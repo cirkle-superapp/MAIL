@@ -15,7 +15,8 @@ import { useMailStore } from "@/store/mail-store";
 import { useInvalidateMail } from "@/hooks/use-mail";
 import { toast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { CirkleLogo } from "@/components/brand/cirkle-logo";
+import { CirkleMark } from "@/components/brand/cirkle-logo";
+import { cn } from "@/lib/utils";
 
 interface TopBarProps {
   onToggleSidebar: () => void;
@@ -29,7 +30,6 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
   const invalidate = useInvalidateMail();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // debounce search input -> query
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -40,7 +40,6 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
     };
   }, [searchInput, setSearchQuery]);
 
-  // Listen for the global "focus-search" event (triggered by the "/" shortcut)
   useEffect(() => {
     function onFocusSearch() {
       const el = document.querySelector<HTMLInputElement>(
@@ -64,11 +63,11 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur-md sm:px-4">
+    <header className="glass sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/40 px-3 backdrop-blur-xl sm:px-4">
       <Button
         variant="ghost"
         size="icon"
-        className="flex-shrink-0"
+        className="btn-premium flex-shrink-0"
         onClick={onToggleSidebar}
         aria-label="Toggle sidebar"
       >
@@ -76,28 +75,25 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
       </Button>
 
       <div className="flex items-center gap-2 pr-2">
-        <CirkleLogo
-          size={32}
-          withWordmark
-          wordmarkText="Cirkle Mail"
-          subText="your connected inbox"
-          wordmarkClassName="text-foreground"
-        />
+        <div className="flex h-8 w-8 items-center justify-center">
+          <CirkleMark size={24} />
+        </div>
       </div>
 
+      {/* Premium search bar */}
       <div className="relative flex flex-1 items-center">
         <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
         <Input
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search mail"
-          className="h-10 rounded-full border-border/60 bg-muted/60 pl-9 pr-9 text-sm shadow-none focus-visible:bg-background focus-visible:ring-1"
+          placeholder="Search mail…"
+          className="h-10 rounded-full border-border/30 bg-muted/40 pl-9 pr-9 text-sm shadow-none transition-all focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20"
           aria-label="Search mail"
         />
         {searchInput && (
           <button
             onClick={clearSearch}
-            className="absolute right-3 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="btn-premium absolute right-3 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-all hover:scale-110 hover:bg-muted hover:text-foreground"
             aria-label="Clear search"
           >
             <X className="h-4 w-4" />
@@ -112,6 +108,7 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
               <Button
                 variant="ghost"
                 size="icon"
+                className="btn-premium"
                 onClick={handleRefresh}
                 aria-label="Refresh"
               >
@@ -124,13 +121,14 @@ export function TopBar({ onToggleSidebar, sidebarOpen }: TopBarProps) {
         <Button
           variant="ghost"
           size="icon"
+          className="btn-premium"
           aria-label="Settings"
           onClick={() => window.dispatchEvent(new Event("cirkle:show-settings"))}
         >
           <Settings className="h-[1.1rem] w-[1.1rem]" />
         </Button>
         <ThemeToggle />
-        <Avatar className="ml-1 h-8 w-8 border border-border">
+        <Avatar className="ml-1 h-8 w-8 border border-border/40">
           <AvatarFallback className="bg-gradient-to-br from-teal to-gold text-xs font-semibold text-cream">
             Y
           </AvatarFallback>

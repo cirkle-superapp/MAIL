@@ -3,9 +3,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Cirkle (دواير) — Premium Design System
-   Gold ring + deep teal quadrants + cream/charcoal surfaces.
-   Glass morphism, aurora gradients, premium serif display. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   CIRKLE MAIL — Premium Design System v2
+   A breathtaking, world-class UI that outstands all competitors.
+   Gold + deep teal + cream/charcoal. Aurora gradients. Glass morphism.
+   Spring physics. Premium serif display. Micro-interactions everywhere.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -86,17 +90,19 @@
   --input: 40 20% 88%;
   --ring: 195 56% 23%;
   --radius: 1rem;
-  --glass-bg: 0 0% 100% / 0.6;
-  --glass-strong-bg: 0 0% 100% / 0.92;
-  --glass-border: 40 30% 85% / 0.6;
+  --glass-bg: 0 0% 100% / 0.55;
+  --glass-strong-bg: 0 0% 100% / 0.88;
+  --glass-border: 40 30% 85% / 0.5;
   --gradient-hero: linear-gradient(135deg, hsl(195 56% 23%) 0%, hsl(211 30% 42%) 50%, hsl(351 41% 56%) 100%);
   --gradient-gold: linear-gradient(135deg, hsl(39 45% 67%) 0%, hsl(39 45% 47%) 100%);
-  --gradient-aurora: radial-gradient(ellipse at top left, hsl(351 41% 56% / 0.18), transparent 50%), radial-gradient(ellipse at bottom right, hsl(195 56% 33% / 0.22), transparent 55%), radial-gradient(ellipse at center, hsl(39 45% 57% / 0.12), transparent 60%);
+  --gradient-aurora: radial-gradient(ellipse 80% 60% at 20% 0%, hsl(351 41% 56% / 0.12), transparent 60%), radial-gradient(ellipse 70% 50% at 80% 100%, hsl(195 56% 33% / 0.15), transparent 60%), radial-gradient(ellipse 60% 40% at 50% 50%, hsl(39 45% 57% / 0.08), transparent 60%);
+  --gradient-aurora-strong: radial-gradient(ellipse 80% 60% at 20% 0%, hsl(351 41% 56% / 0.25), transparent 60%), radial-gradient(ellipse 70% 50% at 80% 100%, hsl(195 56% 43% / 0.2), transparent 60%), radial-gradient(ellipse 60% 40% at 50% 50%, hsl(39 45% 57% / 0.12), transparent 60%);
   --gradient-mesh: conic-gradient(from 180deg at 50% 50%, hsl(195 56% 23%), hsl(351 41% 56%), hsl(39 45% 57%), hsl(211 30% 42%), hsl(195 56% 23%));
   --shadow-soft: 0 2px 10px -2px hsl(60 8% 9% / 0.06), 0 8px 30px -10px hsl(60 8% 9% / 0.08);
-  --shadow-glow: 0 0 40px hsl(39 45% 57% / 0.4);
-  --shadow-glass: 0 8px 32px hsl(195 56% 23% / 0.1);
+  --shadow-glow: 0 0 40px hsl(39 45% 57% / 0.3);
+  --shadow-glass: 0 8px 32px hsl(195 56% 23% / 0.08);
   --shadow-float: 0 20px 50px -15px hsl(60 8% 9% / 0.2);
+  --shadow-premium: 0 4px 20px -4px hsl(60 8% 9% / 0.08), 0 12px 40px -8px hsl(60 8% 9% / 0.12);
   --sidebar-background: 40 35% 95%;
   --sidebar-foreground: 60 8% 9%;
   --sidebar-primary: 195 56% 23%;
@@ -134,16 +140,16 @@
   --border: 60 6% 18%;
   --input: 60 6% 18%;
   --ring: 39 45% 57%;
-  --glass-bg: 60 8% 10% / 0.6;
-  --glass-strong-bg: 60 8% 10% / 0.92;
+  --glass-bg: 60 8% 10% / 0.55;
+  --glass-strong-bg: 60 8% 10% / 0.88;
   --glass-border: 39 45% 57% / 0.15;
-  --gradient-hero: linear-gradient(135deg, hsl(195 56% 18%) 0%, hsl(211 30% 25%) 50%, hsl(351 41% 36%) 100%);
-  --gradient-aurora: radial-gradient(ellipse at top left, hsl(351 41% 56% / 0.15), transparent 50%), radial-gradient(ellipse at bottom right, hsl(195 56% 43% / 0.2), transparent 55%), radial-gradient(ellipse at center, hsl(39 45% 57% / 0.1), transparent 60%);
-  --gradient-card: linear-gradient(160deg, hsl(60 8% 14% / 0.8), hsl(60 8% 8% / 0.4));
+  --gradient-aurora: radial-gradient(ellipse 80% 60% at 20% 0%, hsl(351 41% 56% / 0.12), transparent 60%), radial-gradient(ellipse 70% 50% at 80% 100%, hsl(195 56% 43% / 0.15), transparent 60%), radial-gradient(ellipse 60% 40% at 50% 50%, hsl(39 45% 57% / 0.08), transparent 60%);
+  --gradient-aurora-strong: radial-gradient(ellipse 80% 60% at 20% 0%, hsl(351 41% 56% / 0.2), transparent 60%), radial-gradient(ellipse 70% 50% at 80% 100%, hsl(195 56% 43% / 0.18), transparent 60%), radial-gradient(ellipse 60% 40% at 50% 50%, hsl(39 45% 57% / 0.1), transparent 60%);
   --shadow-soft: 0 2px 10px -2px hsl(0 0% 0% / 0.4), 0 8px 30px -10px hsl(0 0% 0% / 0.5);
-  --shadow-glow: 0 0 50px hsl(39 45% 57% / 0.35);
+  --shadow-glow: 0 0 50px hsl(39 45% 57% / 0.3);
   --shadow-glass: 0 8px 32px hsl(0 0% 0% / 0.4);
   --shadow-float: 0 20px 50px -15px hsl(0 0% 0% / 0.6);
+  --shadow-premium: 0 4px 20px -4px hsl(0 0% 0% / 0.3), 0 12px 40px -8px hsl(0 0% 0% / 0.4);
   --sidebar-background: 60 8% 8%;
   --sidebar-foreground: 40 50% 98%;
   --sidebar-primary: 39 45% 57%;
@@ -161,7 +167,7 @@
 
 @layer base {
   * { border-color: hsl(var(--border)); }
-  html { -webkit-font-smoothing: antialiased; }
+  html { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
@@ -169,28 +175,60 @@
     background-image: var(--gradient-aurora);
     background-attachment: fixed;
     background-size: cover;
+    overflow: hidden;
   }
-  h1, h2, h3, .font-display { font-family: var(--font-fraunces), Georgia, serif; letter-spacing: -0.02em; }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-fraunces), Georgia, serif;
+    letter-spacing: -0.025em;
+  }
+  /* Premium scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.3); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.25); border-radius: 9999px; transition: background 0.2s; }
   ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
-  ::selection { background: hsl(var(--gold) / 0.3); color: hsl(var(--charcoal)); }
+  ::selection { background: hsl(var(--gold) / 0.25); color: hsl(var(--charcoal)); }
+  /* Premium focus states */
+  *:focus-visible { outline: none; box-shadow: 0 0 0 2px hsl(var(--ring) / 0.5); border-radius: var(--radius-sm); }
 }
 
+/* ═══ Glass Morphism ═══ */
 @layer components {
-  .glass { background: hsl(var(--glass-bg)); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid hsl(var(--glass-border)); }
-  .glass-strong { background: hsl(var(--glass-strong-bg)); backdrop-filter: blur(32px) saturate(200%); -webkit-backdrop-filter: blur(32px) saturate(200%); border: 1px solid hsl(var(--glass-border)); }
+  .glass {
+    background: hsl(var(--glass-bg));
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid hsl(var(--glass-border));
+  }
+  .glass-strong {
+    background: hsl(var(--glass-strong-bg));
+    backdrop-filter: blur(36px) saturate(200%);
+    -webkit-backdrop-filter: blur(36px) saturate(200%);
+    border: 1px solid hsl(var(--glass-border));
+  }
+  .glass-dark {
+    background: hsl(60 8% 10% / 0.6);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid hsl(39 45% 57% / 0.1);
+  }
+
+  /* ═══ Gradients ═══ */
   .gradient-text { background: var(--gradient-hero); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .gradient-text-gold { background: var(--gradient-gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .aurora-bg { background-image: var(--gradient-aurora); }
+  .aurora-bg-strong { background-image: var(--gradient-aurora-strong); }
   .bg-gradient-hero { background-image: var(--gradient-hero); }
   .bg-gradient-gold { background-image: var(--gradient-gold); }
   .bg-gradient-mesh { background: var(--gradient-mesh); }
+
+  /* ═══ Shadows ═══ */
   .shadow-soft { box-shadow: var(--shadow-soft); }
   .shadow-glass { box-shadow: var(--shadow-glass); }
   .shadow-float { box-shadow: var(--shadow-float); }
   .shadow-glow { box-shadow: var(--shadow-glow); }
+  .shadow-premium { box-shadow: var(--shadow-premium); }
+
+  /* ═══ Brand Colors ═══ */
   .text-gold { color: hsl(var(--gold)); }
   .text-teal { color: hsl(var(--teal)); }
   .text-rose { color: hsl(var(--rose)); }
@@ -204,29 +242,78 @@
   .bg-charcoal { background-color: hsl(var(--charcoal)); }
   .bg-cream { background-color: hsl(var(--cream)); }
   .border-gold { border-color: hsl(var(--gold)); }
+
+  /* ═══ Premium Cards ═══ */
+  .card-premium {
+    border-radius: var(--radius-2xl);
+    border: 1px solid hsl(var(--border) / 0.5);
+    background: hsl(var(--card));
+    box-shadow: var(--shadow-premium);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+  }
+  .card-premium:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-float);
+  }
+
+  /* ═══ Premium Buttons ═══ */
+  .btn-premium {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .btn-premium::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, hsl(0 0% 100% / 0.15) 0%, transparent 50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .btn-premium:hover::after { opacity: 1; }
+  .btn-premium:active { transform: scale(0.97); }
 }
 
+/* ═══ Animations ═══ */
 @layer utilities {
-  /* Canonical Cirkle logo rotation — 360° over 30s, linear, infinite.
-     Applied to a wrapper <div> (HTML transform-origin is 100% reliable
-     across browsers, unlike SVG transform-box). */
+  /* Cirkle logo rotation — 360° over 30s, linear, infinite */
   .cirkle-rotate { animation: cirkleRotate 30s linear infinite; transform-origin: center; }
   @keyframes cirkleRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  /* Spring entrance */
+  .animate-spring-in { animation: springIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+  @keyframes springIn { 0% { opacity: 0; transform: translateY(8px) scale(0.97); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+
+  /* Fade slide up */
+  .animate-fade-up { animation: fadeUp 0.4s ease-out both; }
+  @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
+
+  /* Shimmer */
+  .animate-shimmer { animation: shimmer 2s linear infinite; background-size: 200% 100%; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* Pulse glow */
+  .animate-pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
+  @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 20px hsl(var(--gold) / 0.2); } 50% { box-shadow: 0 0 40px hsl(var(--gold) / 0.4); } }
+
+  /* Float */
+  .animate-float { animation: float 6s ease-in-out infinite; }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+  /* Aurora drift */
+  .aurora-drift { animation: auroraDrift 30s ease-in-out infinite alternate; }
+  @keyframes auroraDrift { 0% { background-position: 0% 0%; } 100% { background-position: 100% 100%; } }
+
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .scrollbar-hide { scrollbar-width: none; }
-  @keyframes pulseRibbon {
-    0% { transform: translateX(-100%); }
-    60%, 100% { transform: translateX(200%); }
-  }
-  /* Rich text editor placeholder */
-  .rte-surface[data-empty="true"]::before {
-    content: attr(data-placeholder);
-    color: hsl(var(--muted-foreground));
-    pointer-events: none;
-    display: block;
-    position: absolute;
-  }
-  .rte-surface { position: relative; }
+
+  /* Stagger delays */
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.3s; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -234,5 +321,16 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
+
+/* Rich text editor placeholder */
+.rte-surface[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  display: block;
+  position: absolute;
+}
+.rte-surface { position: relative; }
