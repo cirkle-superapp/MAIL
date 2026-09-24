@@ -1291,3 +1291,55 @@ Stage Summary:
   - `GET /api/brightdata/snapshot/<id>?ingest=1` — fetch an existing snapshot + index it.
   - `POST /api/brightdata/scrape` `{url, ingest:true}` — on-demand scrape + index.
   - `POST /api/brightdata/datasets` `{datasetId, maxRows}` — trigger a multi-row dataset snapshot (returns immediately; poll with the snapshot endpoint).
+
+---
+Task ID: 74
+Agent: sub-agent (general-purpose — top-tier testing/auditing/COO/CTO report)
+Task: Complete the comprehensive audit of the CIRKLE search engine — Phase A (code inspection of brightdata.ts, scrape/snapshot/datasets routes, crawler.ts, tools.ts, schema.prisma, ranking.ts, indexer.ts, metrics route + lib, search route, rate-limit.ts), Phase B (functional probing via curl + agent-browser for search relevance, P0 security, broken metrics, response shape, mobile/desktop footer, UI rendering), Phase C (write a single comprehensive markdown audit report at /home/z/my-project/AUDIT_REPORT.md).
+
+Work Log:
+- **Phase A code inspection** (read all listed files in parallel):
+  - `src/lib/brightdata.ts` (~662 lines): budget guard design is solid (file-persisted, daily/monthly caps, rollover, disable-on-auth-fail). **Found P2-6 race condition**: loadState+persistState is non-atomic; concurrent `recordSuccess` calls can lose increments. **Found P2-8 dead BrightData SERP tier**: `brightDataSerp` always returns null (no SERP zone), but `recordFallback('serp', 'no_serp_zone')` still inflates the fallback counter. **Found P3-2 error leakage**: `brightDataDatasetTrigger` includes BrightData API response body in error message (returned to API caller). **Found P3-4 fragile puppeteer.default.connect import**.
+  - `src/app/api/brightdata/scrape/route.ts`: **CONFIRMED P0-1** — no auth check anywhere despite the comment claiming "Auth: optional BRIGHTDATA_OPERATOR_TOKEN env". The env var is never read. SSRF amplifier: caller provides arbitrary URL → CIRKLE asks BrightData to fetch via residential proxies → returns rendered HTML. Same bug in snapshot/[id]/route.ts + datasets/route.ts.
+  - `src/app/api/brightdata/snapshot/[id]/route.ts`: no auth (P0-1). Path param `id` is forwarded to BrightData API, not used for local file access — no SSRF via this vector (verified by passing `../../etc/passwd` → BrightData returns 404).
+  - `src/app/api/brightdata/datasets/route.ts`: no auth (P0-1). Error leakage (P3-2).
+  - `src/lib/search/crawler.ts`: BrightData fallback at line 161 swallows errors silently with `catch {}` (P2-2 observability gap).
+  - `src/lib/search/tools.ts`: `shouldLiveWebFallback` returns false when `indexResultCount > 0` — meaning ANY irrelevant index match disables the live-web fallback. **This is P1-1**.
+  - `prisma/schema.prisma`: no FKs anywhere (CrawlQueue↔Document, Link↔Document, SearchHistory↔Session), no onDelete cascade, no audit fields (createdBy/updatedBy/deletedAt), missing indexes on Document.publishedAt/language/country (P2-7).
+  - `src/lib/search/ranking.ts`: **FOUND P0-3** — `const lex = c.tfidf` (raw unbounded BM25 score) → `score = 0.30 * lex + ...` → `score = clamp01(score)` at line 285. The clamp destroys discrimination: 3 of 4 "Steve Jobs" results saturate to score=1.0. Ranking becomes arbitrary. Verified live.
+  - `src/lib/search/indexer.ts`: BM25 math correct (lines 234-248). `docLen` uses `wordCount` (counts tokens BEFORE stopword removal) — biased (P3-6). Whole-index reload on every cache invalidation (P3-5) — fine for 33 docs, won't scale to 10k+.
+  - `src/app/api/metrics/route.ts` + `src/lib/search/metrics.ts`: **CONFIRMED P0-2** — module-scoped `state` object isn't shared across Next.js dev-mode module instances (HMR splits module graphs). Verified live: `/api/metrics` returns `total searches: 0` after 8+ real searches.
+  - `src/lib/search/index.ts:587-605`: **FOUND P1-2** — `recordSearch` call is AFTER `return { ... }` in the tool-path branch. Dead code, never executed.
+  - `src/lib/search/index.ts:952-973`: response missing `tookMs` and `totalFound` (P2-1).
+  - `src/lib/search/rate-limit.ts`: sliding-window logic correct. Trusts `x-forwarded-for` blindly (P3-3).
+  - `package.json:86`: `z-ai-web-dev-sdk` STILL present (P1-3) — confirmed only mentioned in 5 stale comments across src/, never imported.
+  - `tsconfig.json`: `strict: true` but `noImplicitAny: false` (P3-1).
+  - `.gitignore`: `.env*` correctly ignored (line 34) — good.
+
+- **Phase B functional probing** (curl + agent-browser in parallel):
+  - **Search relevance (verified live):**
+    - `Steve Jobs` → top = "The Rust Programming Language" (book by Steve Klabnik → matches "steve"; other results match "jobs" as in job postings). 4 results, 3 of them saturate to relevanceScore=1.0.
+    - `apple` → top = "The Verge" (irrelevant). 7 results, top score=1.0.
+    - `Albert Einstein` → top = GOV.UK (per prior audit — irrelevant).
+    - 4 celebrity queries (Taylor Swift, Messi, Beyoncé, Mbappé) → 2-9 irrelevant index hits each, 0 live-web results (P1-1 — fallback gated out by noisy index).
+    - `zzzz nonexistent` → 0 index + 0 live-web (DuckDuckGo correctly returned nothing for the fake string).
+  - **P0-1 confirmed**: `POST /api/brightdata/scrape` with `{"url":"https://example.com"}` (no auth headers) → HTTP 200, returned rendered HTML, consumed 1 daily BrightData call. SSRF amplifier.
+  - **P0-2 confirmed**: `GET /api/metrics` → `total searches: 0, latency samples: 0, recent: []` even after 8+ real searches.
+  - **Response shape confirmed**: top-level keys are `query, interpretedQuery, instantAnswer, liveWebResults, aiAnswer, knowledgeCard, sponsored, results, clusters, relatedQuestions, didYouMean, pagination, personalized, personalizationFactors, indexStats`. NO `tookMs`, NO `totalFound`.
+  - **Snapshot path-injection safe**: `GET /api/brightdata/snapshot/../../etc/passwd` → BrightData returns 404 (path is forwarded to BrightData, not used for local file access). No SSRF via this vector.
+  - **Datasets endpoint unauth confirmed**: `POST /api/brightdata/datasets` with bogus datasetId → 503 + BrightData error message echoed back (`trigger_http_404: Collector not found`). Not a token leak, but error leakage (P3-2).
+  - **Token leak check**: grepped all API responses for `9a86a02e` (token prefix) — zero matches. Token is in Authorization header only, never in response body. PASSED.
+  - **UI probing via agent-browser**: home page loads, title "CIRKLE — Search the open web. Decide for yourself." Console errors clean (only React DevTools + HMR info). No page errors. Sticky footer works on desktop (`pageH=1001, footerBottom=1001.3, footerAtBottom=true`) AND mobile (375x600, `pageH=978, footerBottom=977.5, footerAtBottom=true`). Searched "Steve Jobs" from UI → URL bar shows `?q=Steve+Jobs&mode=BALANCED...` and the first result article reads `"Result 1: The Rust Programming Language - The Rust Programming Language"`. Confirmed the bad UX is visible to end users.
+
+- **Phase C output** — wrote the comprehensive audit report at `/home/z/my-project/AUDIT_REPORT.md` (~13KB, ~350 lines). Sections: Executive Summary (honest 2-paragraph verdict: "not production-ready, 3 P0s + relevance crisis"), Audit Scorecard (10 dimensions, Overall 38/100), P0 (3 blockers — unauth BrightData endpoints, broken metrics, broken ranking normalization), P1 (4 criticals — live-web fallback gating, dead code in metrics path, dead z-ai-web-dev-sdk dep, no test framework), P2 (8 important — missing tookMs/totalFound, silent BrightData errors, no CI/CD, no README, no .env.example, budget race condition, missing schema FKs, dead BrightData SERP tier), P3 (6 nice-to-haves — tsconfig noImplicitAny, error leakage, x-forwarded-for trust, puppeteer import fragility, indexer scale, docLen bias), What's working well (15 honest strengths), 30/60/90 day roadmap, Architecture assessment, Files audit summary table.
+
+- **Honest verdict in report**: "Architecturally promising, security-and-relevance broken. Not shippable to end users today. Fix the 3 P0s + ranking normalization bug → credible beta. Fix index size + live-web fallback gating → credible search engine. 38/100 overall."
+
+Files produced/modified:
+- `/home/z/my-project/AUDIT_REPORT.md` (new — comprehensive audit report)
+- `/home/z/my-project/worklog.md` (appended Task 74 entry)
+
+Stage Summary:
+- Audit complete. 3 P0 blockers identified, 4 P1 criticals, 8 P2 importants, 6 P3 nice-to-haves. All P0s + most P1s verified live against the running dev server. Report is intentionally honest per the user's request.
+- The single biggest lever for the project: grow the index from 33 → 1,000+ docs AND fix the BM25 score normalization (P0-3) AND fix the live-web fallback gating (P1-1). Those three fixes together would transform relevance from "Rust book for Steve Jobs" to actually useful results.
+- The single biggest security lever: add Bearer auth + SSRF allow-list to the 3 BrightData endpoints (P0-1). Without it, the BrightData budget can be drained by any visitor and the SSRF amplifier can be used to bypass corporate firewalls.

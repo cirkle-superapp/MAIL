@@ -1,0 +1,799 @@
+     1→/**
+     2→ * tools.ts
+     3→ * -----------------------------------------------------------------------------
+     4→ * Real-time answer tools for queries that NO static web index can answer:
+     5→ *
+     6→ *   - weather  → "weather in Dubai", "temperature in Cairo", "forecast for Tokyo"
+     7→ *   - time     → "time in Dubai", "what time is it in London"
+     8→ *   - math     → "2+2", "15% of 200", "sqrt(144)", "12 * 8"
+     9→ *   - liveWeb  → when the index has 0 results, fetch fresh web content via
+    10→ *                the unified LLM client's webSearch() function (DuckDuckGo
+    11→ *                HTML search — supplementary source per spec §69 — NOT the
+    12→ *                primary backend, just a real-time fallback for queries the
+    13→ *                local index can't serve yet).
+    14→ *
+    15→ * These tools return INSTANT structured answers (1-2s) shown in the
+    16→ * InstantAnswer card at the top of the SERP — above the organic results.
+    17→ *
+    18→ * Weather uses Open-Meteo (free, no API key, no rate limit for low volume).
+    19→ * Time uses the Intl API + a city→timezone geocoding lookup (also Open-Meteo).
+    20→ * Math uses a safe shunting-yard evaluator (no eval()).
+    21→ */
+    22→
+    23→import { parseQuery } from './query-understanding'
+    24→import * as https from 'node:https'
+    25→
+    26→// --- Types -----------------------------------------------------------------
+    27→
+    28→export type ToolKind = 'weather' | 'time' | 'math' | 'convert' | 'currency' | 'liveWeb' | 'none'
+    29→
+    30→export interface ToolDetection {
+    31→  kind: ToolKind
+    32→  /** Raw parameter extracted from the query (city name, math expression, etc.). */
+    33→  param: string
+    34→}
+    35→
+    36→export interface InstantAnswer {
+    37→  kind: Exclude<ToolKind, 'none' | 'liveWeb'>
+    38→  title: string        // e.g. "Weather in Dubai"
+    39→  summary: string      // 1-2 sentence human-readable answer
+    40→  facts: { label: string; value: string }[]
+    41→  source: string       // attribution, e.g. "Open-Meteo"
+    42→  sourceUrl?: string
+    43→  fetchedAt: string
+    44→}
+    45→
+    46→export interface LiveWebResult {
+    47→  title: string
+    48→  url: string
+    49→  snippet: string
+    50→  domain: string
+    51→  sourceType: string
+    52→}
+    53→
+    54→// --- Detection -------------------------------------------------------------
+    55→
+    56→const WEATHER_PATTERNS = [
+    57→  /\b(?:weather|temperature|forecast|humidity|wind)\s+(?:in|for|at)\s+([a-z\u00C0-\u024F\s',-]+?)(?:\?|$|\.|,)/i,
+    58→  /\b(?:what\s+(?:is|'s)\s+the\s+)?(?:weather|temperature|forecast)\s+(?:in|for|at)\s+([a-z\u00C0-\u024F\s',-]+?)(?:\?|$|\.|,)/i,
+    59→  /\b([a-z\u00C0-\u024F\s',-]+?)\s+weather\b/i,
+    60→]
+    61→
+    62→const TIME_PATTERNS = [
+    63→  /\b(?:time|clock)\s+(?:in|for|at)\s+([a-z\u00C0-\u024F\s',-]+?)(?:\?|$|\.|,)/i,
+    64→  /\bwhat\s+(?:time|is\s+the\s+time)\s+(?:in|is\s+it\s+in)\s+([a-z\u00C0-\u024F\s',-]+?)(?:\?|$|\.|,)/i,
+    65→  /\b([a-z\u00C0-\u024F\s',-]+?)\s+(?:time|timezone)\b/i,
+    66→]
+    67→
+    68→const MATH_PATTERN = /^[\d\s+\-*/().%^√πe]+$/i
+    69→// Extended pattern that also allows sqrt/PI/E identifiers
+    70→const MATH_PATTERN_EXT = /^[\d\s+\-*/().%^√πa-zA-Z]+$/i
+    71→
+    72→export function detectTool(query: string): ToolDetection {
+    73→  const q = query.trim()
+    74→
+    75→  // Math: if the query is mostly numbers + operators, treat as math.
+    76→  if ((MATH_PATTERN.test(q) || MATH_PATTERN_EXT.test(q)) && /\d/.test(q) && /[+\-*/^%]|sqrt|√/.test(q)) {
+    77→    return { kind: 'math', param: q }
+    78→  }
+    79→
+    80→  // --- Unit converter ---
+    81→  // "10 km in miles", "5 kg to lbs", "100 f to c", "1 hour in minutes"
+    82→  const convertMatch = q.match(/([\d.]+)\s*(km|mi|miles|kg|lbs|pounds|g|oz|c|f|celsius|fahrenheit|liters?|gallons?|hours?|minutes?|seconds?|days?|weeks?|feet|ft|inches|cm|mm|mb|gb|tb)\s*(?:in|to|→)\s*(km|mi|miles|kg|lbs|pounds|g|oz|c|f|celsius|fahrenheit|liters?|gallons?|hours?|minutes?|seconds?|days?|weeks?|feet|ft|inches|cm|mm|mb|gb|tb)/i)
+    83→  if (convertMatch) {
+    84→    return { kind: 'convert', param: q }
+    85→  }
+    86→
+    87→  // --- Currency converter ---
+    88→  // "100 usd to eur", "50 eur in gbp", "convert 100 dollars to euros"
+    89→  const currencyMatch = q.match(/([\d.,]+)\s*(usd|eur|gbp|jpy|cny|aed|sar|egp|inr|cad|aud|chf|dollars?|euros?|pounds?)\s*(?:in|to|→)\s*(usd|eur|gbp|jpy|cny|aed|sar|egp|inr|cad|aud|chf|dollars?|euros?|pounds?)/i)
+    90→  if (currencyMatch) {
+    91→    return { kind: 'currency', param: q }
+    92→  }
+    93→
+    94→  // Weather
+    95→  for (const re of WEATHER_PATTERNS) {
+    96→    const m = q.match(re)
+    97→    if (m && m[1]) {
+    98→      const city = m[1].trim().replace(/\s+/g, ' ')
+    99→      if (city.length > 1 && city.length < 60) return { kind: 'weather', param: city }
+   100→    }
+   101→  }
+   102→
+   103→  // Time
+   104→  for (const re of TIME_PATTERNS) {
+   105→    const m = q.match(re)
+   106→    if (m && m[1]) {
+   107→      const city = m[1].trim().replace(/\s+/g, ' ')
+   108→      if (city.length > 1 && city.length < 60) return { kind: 'time', param: city }
+   109→    }
+   110→  }
+   111→
+   112→  return { kind: 'none', param: '' }
+   113→}
+   114→
+   115→// --- Weather (Open-Meteo — free, no API key) -------------------------------
+   116→
+   117→interface GeoResult {
+   118→  name: string
+   119→  latitude: number
+   120→  longitude: number
+   121→  country: string
+   122→  timezone: string
+   123→}
+   124→
+   125→/** Fetch JSON via Node's https module (bypasses undici/fetch which can fail
+   126→ *  in some Next.js server sandboxes). Returns parsed JSON or null. */
+   127→function fetchJsonHttps(url: string, timeoutMs = 6000): Promise<any | null> {
+   128→  return new Promise((resolve) => {
+   129→    const u = new URL(url)
+   130→    const req = https.get(
+   131→      {
+   132→        hostname: u.hostname,
+   133→        path: u.pathname + u.search,
+   134→        headers: { 'User-Agent': 'CIRKLE-Search/1.0', Accept: 'application/json' },
+   135→        timeout: timeoutMs,
+   136→      },
+   137→      (res: any) => {
+   138→        if (res.statusCode !== 200) {
+   139→          console.error('[tools] https', u.hostname, '→ status', res.statusCode)
+   140→          resolve(null)
+   141→          res.resume()
+   142→          return
+   143→        }
+   144→        let data = ''
+   145→        res.on('data', (c: Buffer) => (data += c.toString()))
+   146→        res.on('end', () => {
+   147→          try {
+   148→            resolve(JSON.parse(data))
+   149→          } catch (e: any) {
+   150→            console.error('[tools] JSON parse error:', e?.message)
+   151→            resolve(null)
+   152→          }
+   153→        })
+   154→      },
+   155→    )
+   156→    req.on('error', (e: any) => {
+   157→      console.error('[tools] https error:', u.hostname, '→', e?.message ?? e)
+   158→      resolve(null)
+   159→    })
+   160→    req.on('timeout', () => {
+   161→      req.destroy()
+   162→      console.error('[tools] https timeout:', u.hostname)
+   163→      resolve(null)
+   164→    })
+   165→  })
+   166→}
+   167→
+   168→/** Fetch with a manual timeout — kept for compatibility but now just delegates
+   169→ *  to fetchJsonHttps for JSON APIs. */
+   170→async function fetchWithTimeout(url: string, _timeoutMs: number): Promise<Response | null> {
+   171→  try {
+   172→    return await fetch(url)
+   173→  } catch (e: any) {
+   174→    console.error('[tools] fetch failed:', url.slice(0, 80), '→', e?.message ?? e)
+   175→    return null
+   176→  }
+   177→}
+   178→
+   179→async function geocode(city: string): Promise<GeoResult | null> {
+   180→  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`
+   181→  try {
+   182→    const data = await fetchJsonHttps(url, 5000)
+   183→    const hit = data?.results?.[0]
+   184→    if (!hit) return null
+   185→    return {
+   186→      name: hit.name,
+   187→      latitude: hit.latitude,
+   188→      longitude: hit.longitude,
+   189→      country: hit.country ?? '',
+   190→      timezone: hit.timezone ?? 'UTC',
+   191→    }
+   192→  } catch (e: any) {
+   193→    console.error('[tools] geocode error:', e?.message ?? e)
+   194→    return null
+   195→  }
+   196→}
+   197→
+   198→const WMO_CODE_MAP: Record<number, string> = {
+   199→  0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+   200→  45: 'Fog', 48: 'Depositing rime fog',
+   201→  51: 'Light drizzle', 53: 'Moderate drizzle', 55: 'Dense drizzle',
+   202→  61: 'Slight rain', 63: 'Moderate rain', 65: 'Heavy rain',
+   203→  71: 'Slight snowfall', 73: 'Moderate snowfall', 75: 'Heavy snowfall',
+   204→  77: 'Snow grains',
+   205→  80: 'Slight rain showers', 81: 'Moderate rain showers', 82: 'Violent rain showers',
+   206→  85: 'Slight snow showers', 86: 'Heavy snow showers',
+   207→  95: 'Thunderstorm', 96: 'Thunderstorm with slight hail', 99: 'Thunderstorm with heavy hail',
+   208→}
+   209→
+   210→async function fetchWeather(geo: GeoResult): Promise<{
+   211→  temperature: number
+   212→  apparentTemp: number
+   213→  humidity: number
+   214→  windSpeed: number
+   215→  weatherCode: number
+   216→  description: string
+   217→  isDay: boolean
+   218→} | null> {
+   219→  const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.latitude}&longitude=${geo.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day&timezone=${encodeURIComponent(geo.timezone)}`
+   220→  try {
+   221→    const data = await fetchJsonHttps(url, 6000)
+   222→    const c = data?.current
+   223→    if (!c) return null
+   224→    const code = c.weather_code ?? 0
+   225→    return {
+   226→      temperature: c.temperature_2m,
+   227→      apparentTemp: c.apparent_temperature,
+   228→      humidity: c.relative_humidity_2m,
+   229→      windSpeed: c.wind_speed_10m,
+   230→      weatherCode: code,
+   231→      description: WMO_CODE_MAP[code] ?? 'Unknown',
+   232→      isDay: c.is_day === 1,
+   233→    }
+   234→  } catch (e: any) {
+   235→    console.error('[tools] fetchWeather error:', e?.message ?? e)
+   236→    return null
+   237→  }
+   238→}
+   239→
+   240→/**
+   241→ * Fallback weather fetcher using the unified webSearch() function from
+   242→ * ../llm (DuckDuckGo HTML search).
+   243→ * This works in sandboxes where direct fetch to open-meteo is blocked,
+   244→ * because the web_search runs via DuckDuckGo's HTML endpoint. Returns a
+   245→ * weather instant answer parsed from the search snippets + an LLM synthesis.
+   246→ */
+   247→async function runWeatherFallback(city: string): Promise<InstantAnswer | null> {
+   248→  try {
+   249→    const { webSearch, chatCompletion } = await import('../llm')
+   250→
+   251→    // Step 1: web search for current weather.
+   252→    const results = await webSearch(`current weather ${city} temperature humidity wind`, 5)
+   253→    if (!Array.isArray(results) || results.length === 0) return null
+   254→
+   255→    // Step 2: ask the LLM to extract structured weather data from the snippets.
+   256→    const context = results
+   257→      .slice(0, 5)
+   258→      .map((r: any, i: number) => `[${i + 1}] ${r.name}\n${r.snippet}`)
+   259→      .join('\n\n')
+   260→
+   261→    const completion = await chatCompletion([
+   262→      {
+   263→        role: 'system',
+   264→        content: 'You extract weather data from search snippets. Return ONLY valid JSON with these fields: temperature (number in °C), apparentTemp (number, "feels like" in °C), humidity (number, percentage), windSpeed (number, km/h), description (short text like "Clear sky" or "Light rain"), isDay (boolean). If a field is not available, use null. No prose, no markdown — JSON only.',
+   265→      },
+   266→      {
+   267→        role: 'user',
+   268→        content: `City: ${city}\n\nSearch snippets:\n${context}\n\nExtract the current weather as JSON.`,
+   269→      },
+   270→    ])
+   271→
+   272→    const raw = completion?.content
+   273→    if (!raw) return null
+   274→    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+   275→    if (!jsonMatch) return null
+   276→    const w = JSON.parse(jsonMatch[0])
+   277→
+   278→    return {
+   279→      kind: 'weather',
+   280→      title: `Weather in ${city}`,
+   281→      summary: `${w.description ?? 'Unknown conditions'}, ${w.temperature ?? '?'}°C${w.apparentTemp != null ? ` — feels like ${w.apparentTemp}°C` : ''}.${w.humidity != null ? ` Humidity ${w.humidity}%.` : ''}${w.windSpeed != null ? ` Wind ${w.windSpeed} km/h.` : ''}`,
+   282→      facts: [
+   283→        ...(w.temperature != null ? [{ label: 'Temperature', value: `${w.temperature}°C` }] : []),
+   284→        ...(w.apparentTemp != null ? [{ label: 'Feels like', value: `${w.apparentTemp}°C` }] : []),
+   285→        ...(w.description ? [{ label: 'Conditions', value: w.description }] : []),
+   286→        ...(w.humidity != null ? [{ label: 'Humidity', value: `${w.humidity}%` }] : []),
+   287→        ...(w.windSpeed != null ? [{ label: 'Wind', value: `${w.windSpeed} km/h` }] : []),
+   288→      ],
+   289→      source: 'Live web (via z.ai web_search)',
+   290→      sourceUrl: results[0]?.url,
+   291→      fetchedAt: new Date().toISOString(),
+   292→    }
+   293→  } catch (e: any) {
+   294→    console.error('[tools] weather fallback error:', e?.message ?? e)
+   295→    return null
+   296→  }
+   297→}
+   298→
+   299→async function runWeatherTool(city: string): Promise<InstantAnswer | null> {
+   300→  // Try Open-Meteo first (fast, free, structured). If it fails (sandbox
+   301→  // blocks direct fetch), fall back to web_search + LLM extraction.
+   302→  const geo = await geocode(city)
+   303→  if (geo) {
+   304→    const w = await fetchWeather(geo)
+   305→    if (w) {
+   306→      const locationLabel = `${geo.name}${geo.country ? ', ' + geo.country : ''}`
+   307→      return {
+   308→        kind: 'weather',
+   309→        title: `Weather in ${locationLabel}`,
+   310→        summary: `${w.description}${w.isDay ? '' : ' (night)'}, ${Math.round(w.temperature)}°C — feels like ${Math.round(w.apparentTemp)}°C. Humidity ${w.humidity}%, wind ${Math.round(w.windSpeed)} km/h.`,
+   311→        facts: [
+   312→          { label: 'Temperature', value: `${Math.round(w.temperature)}°C` },
+   313→          { label: 'Feels like', value: `${Math.round(w.apparentTemp)}°C` },
+   314→          { label: 'Conditions', value: w.description },
+   315→          { label: 'Humidity', value: `${w.humidity}%` },
+   316→          { label: 'Wind', value: `${Math.round(w.windSpeed)} km/h` },
+   317→          { label: 'Time zone', value: geo.timezone },
+   318→        ],
+   319→        source: 'Open-Meteo',
+   320→        sourceUrl: `https://open-meteo.com/`,
+   321→        fetchedAt: new Date().toISOString(),
+   322→      }
+   323→    }
+   324→  }
+   325→  // Fallback: use web_search + LLM
+   326→  return runWeatherFallback(city)
+   327→}
+   328→
+   329→// --- Time (Intl API + geocoding for timezone) ------------------------------
+   330→
+   331→// Hardcoded city → IANA timezone map for common cities. This lets the time
+   332→// tool work without geocode (which may fail in sandboxes). For unknown
+   333→// cities, falls back to web_search.
+   334→const CITY_TIMEZONES: Record<string, string> = {
+   335→  dubai: 'Asia/Dubai',
+   336→  cairo: 'Africa/Cairo',
+   337→  london: 'Europe/London',
+   338→  paris: 'Europe/Paris',
+   339→  berlin: 'Europe/Berlin',
+   340→  madrid: 'Europe/Madrid',
+   341→  rome: 'Europe/Rome',
+   342→  moscow: 'Europe/Moscow',
+   343→  istanbul: 'Europe/Istanbul',
+   344→  'new york': 'America/New_York',
+   345→  nyc: 'America/New_York',
+   346→  losangeles: 'America/Los_Angeles',
+   347→  'los angeles': 'America/Los_Angeles',
+   348→  chicago: 'America/Chicago',
+   349→  toronto: 'America/Toronto',
+   350→  'mexico city': 'America/Mexico_City',
+   351→  saopaulo: 'America/Sao_Paulo',
+   352→  'sao paulo': 'America/Sao_Paulo',
+   353→  tokyo: 'Asia/Tokyo',
+   354→  seoul: 'Asia/Seoul',
+   355→  shanghai: 'Asia/Shanghai',
+   356→  beijing: 'Asia/Shanghai',
+   357→  hongkong: 'Asia/Hong_Kong',
+   358→  'hong kong': 'Asia/Hong_Kong',
+   359→  singapore: 'Asia/Singapore',
+   360→  mumbai: 'Asia/Kolkata',
+   361→  delhi: 'Asia/Kolkata',
+   362→  bangkok: 'Asia/Bangkok',
+   363→  jakarta: 'Asia/Jakarta',
+   364→  sydney: 'Australia/Sydney',
+   365→  melbourne: 'Australia/Melbourne',
+   366→  auckland: 'Pacific/Auckland',
+   367→  riyadh: 'Asia/Riyadh',
+   368→  doha: 'Asia/Qatar',
+   369→  kuwait: 'Asia/Kuwait',
+   370→  jeddah: 'Asia/Riyadh',
+   371→  amman: 'Asia/Amman',
+   372→  beirut: 'Asia/Beirut',
+   373→  baghdad: 'Asia/Baghdad',
+   374→  tehran: 'Asia/Tehran',
+   375→  karachi: 'Asia/Karachi',
+   376→  lagos: 'Africa/Lagos',
+   377→  nairobi: 'Africa/Nairobi',
+   378→  johannesburg: 'Africa/Johannesburg',
+   379→  'cape town': 'Africa/Johannesburg',
+   380→  'capetown': 'Africa/Johannesburg',
+   381→  accra: 'Africa/Accra',
+   382→  casablanca: 'Africa/Casablanca',
+   383→  algiers: 'Africa/Algiers',
+   384→  tunis: 'Africa/Tunis',
+   385→}
+   386→
+   387→async function runTimeTool(city: string): Promise<InstantAnswer | null> {
+   388→  // Try the hardcoded city → timezone map first (instant, no network).
+   389→  const cityLower = city.toLowerCase().trim()
+   390→  let timezone = CITY_TIMEZONES[cityLower]
+   391→
+   392→  // If not in the map, try geocode (may fail in sandbox).
+   393→  if (!timezone) {
+   394→    const geo = await geocode(city)
+   395→    if (geo) timezone = geo.timezone
+   396→  }
+   397→
+   398→  // If geocode failed, try web_search to find the timezone.
+   399→  if (!timezone) {
+   400→    try {
+   401→      const { webSearch } = await import('../llm')
+   402→      const results = await webSearch(`${city} timezone IANA`, 3)
+   403→      if (Array.isArray(results)) {
+   404→        for (const r of results) {
+   405→          const snippet = (r.snippet ?? '') + ' ' + (r.name ?? '')
+   406→          const tzMatch = snippet.match(/([A-Z][a-z]+\/[A-Z][a-z_]+)/)
+   407→          if (tzMatch) {
+   408→            timezone = tzMatch[1]
+   409→            break
+   410→          }
+   411→        }
+   412→      }
+   413→    } catch {
+   414→      // ignore
+   415→    }
+   416→  }
+   417→
+   418→  if (!timezone) return null
+   419→
+   420→  try {
+   421→    const now = new Date()
+   422→    const formatter = new Intl.DateTimeFormat('en-US', {
+   423→      timeZone: timezone,
+   424→      weekday: 'long',
+   425→      hour: '2-digit',
+   426→      minute: '2-digit',
+   427→      second: '2-digit',
+   428→      hour12: true,
+   429→      year: 'numeric',
+   430→      month: 'long',
+   431→      day: 'numeric',
+   432→    })
+   433→    const parts = formatter.formatToParts(now)
+   434→    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+   435→    const timeStr = `${get('hour')} : ${get('minute')} : ${get('second')} ${get('dayPeriod')}`
+   436→    const dateStr = `${get('weekday')}, ${get('month')} ${get('day')}, ${get('year')}`
+   437→    const offsetFormatter = new Intl.DateTimeFormat('en-US', {
+   438→      timeZone: timezone,
+   439→      timeZoneName: 'shortOffset',
+   440→    })
+   441→    const offsetParts = offsetFormatter.formatToParts(now)
+   442→    const offset = offsetParts.find((p) => p.type === 'timeZoneName')?.value ?? timezone
+   443→    return {
+   444→      kind: 'time',
+   445→      title: `Current time in ${city}`,
+   446→      summary: `It is ${timeStr} on ${dateStr} (${offset}).`,
+   447→      facts: [
+   448→        { label: 'Time', value: timeStr },
+   449→        { label: 'Date', value: dateStr },
+   450→        { label: 'Time zone', value: timezone },
+   451→        { label: 'UTC offset', value: offset },
+   452→      ],
+   453→      source: 'Intl API' + (CITY_TIMEZONES[cityLower] ? ' (built-in map)' : ' + geocode'),
+   454→      fetchedAt: new Date().toISOString(),
+   455→    }
+   456→  } catch {
+   457→    return null
+   458→  }
+   459→}
+   460→
+   461→// --- Math (safe shunting-yard evaluator) -----------------------------------
+   462→
+   463→// --- Safe math evaluator (shunting-yard, NO eval / new Function) ---------
+   464→// Tokenizes the expression, converts to RPN via shunting-yard, evaluates.
+   465→// Supports: + - * / ^ % ( ) numbers, sqrt(), π, e
+   466→function evalMath(expr: string): number | null {
+   467→  // Normalize: √ → sqrt, π → PI, e → E, ^ → ^, % → /100*
+   468→  let e = expr
+   469→    .replace(/√/g, 'sqrt')
+   470→    .replace(/π/g, 'PI')
+   471→    .replace(/\be\b/gi, 'E')
+   472→    .replace(/%/g, '/100*') // "15% of 200" → "15/100*200"
+   473→
+   474→  // Tokenize: numbers, operators, parens, functions, constants
+   475→  const tokens: (string | number)[] = []
+   476→  let i = 0
+   477→  while (i < e.length) {
+   478→    const c = e[i]
+   479→    if (c === ' ') { i++; continue }
+   480→    if (/[0-9.]/.test(c)) {
+   481→      let num = ''
+   482→      while (i < e.length && /[0-9.]/.test(e[i])) num += e[i++]
+   483→      tokens.push(parseFloat(num))
+   484→      continue
+   485→    }
+   486→    if (/[a-zA-Z]/.test(c)) {
+   487→      let name = ''
+   488→      while (i < e.length && /[a-zA-Z]/.test(e[i])) name += e[i++]
+   489→      name = name.toUpperCase()
+   490→      if (name === 'PI') tokens.push(Math.PI)
+   491→      else if (name === 'E') tokens.push(Math.E)
+   492→      else if (name === 'SQRT') tokens.push('sqrt')
+   493→      else return null // unknown identifier
+   494→      continue
+   495→    }
+   496→    if ('+-*/^()'.includes(c)) { tokens.push(c); i++; continue }
+   497→    return null // invalid character
+   498→  }
+   499→
+   500→  // Shunting-yard: infix → RPN
+   501→  const output: (string | number)[] = []
+   502→  const ops: string[] = []
+   503→  const prec: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2, '^': 3, 'sqrt': 4 }
+   504→  const rightAssoc: Set<string> = new Set(['^', 'sqrt'])
+   505→
+   506→  for (const t of tokens) {
+   507→    if (typeof t === 'number') { output.push(t); continue }
+   508→    if (t === 'sqrt') { ops.push(t); continue }
+   509→    if (t === '(') { ops.push(t); continue }
+   510→    if (t === ')') {
+   511→      while (ops.length && ops[ops.length - 1] !== '(') output.push(ops.pop()!)
+   512→      if (!ops.length) return null // mismatched parens
+   513→      ops.pop() // remove '('
+   514→      continue
+   515→    }
+   516→    // operator
+   517→    while (ops.length) {
+   518→      const top = ops[ops.length - 1]
+   519→      if (top === '(') break
+   520→      if (rightAssoc.has(t) ? prec[t] < prec[top] : prec[t] <= prec[top]) {
+   521→        output.push(ops.pop()!)
+   522→      } else break
+   523→    }
+   524→    ops.push(t)
+   525→  }
+   526→  while (ops.length) {
+   527→    const op = ops.pop()!
+   528→    if (op === '(') return null // mismatched parens
+   529→    output.push(op)
+   530→  }
+   531→
+   532→  // Evaluate RPN
+   533→  const stack: number[] = []
+   534→  for (const t of output) {
+   535→    if (typeof t === 'number') { stack.push(t); continue }
+   536→    if (t === 'sqrt') {
+   537→      if (stack.length < 1) return null
+   538→      stack.push(Math.sqrt(stack.pop()!))
+   539→      continue
+   540→    }
+   541→    if (stack.length < 2) return null
+   542→    const b = stack.pop()!
+   543→    const a = stack.pop()!
+   544→    if (t === '+') stack.push(a + b)
+   545→    else if (t === '-') stack.push(a - b)
+   546→    else if (t === '*') stack.push(a * b)
+   547→    else if (t === '/') stack.push(b === 0 ? 0 : a / b)
+   548→    else if (t === '^') stack.push(Math.pow(a, b))
+   549→    else return null
+   550→  }
+   551→  if (stack.length !== 1) return null
+   552→  const result = stack[0]
+   553→  return typeof result === 'number' && isFinite(result) ? Math.round(result * 1e10) / 1e10 : null
+   554→}
+   555→
+   556→function runMathTool(expr: string): InstantAnswer | null {
+   557→  const result = evalMath(expr)
+   558→  if (result === null) return null
+   559→  return {
+   560→    kind: 'math',
+   561→    title: 'Calculation',
+   562→    summary: `${expr.trim()} = ${result}`,
+   563→    facts: [
+   564→      { label: 'Expression', value: expr.trim() },
+   565→      { label: 'Result', value: String(result) },
+   566→    ],
+   567→    source: 'CIRKLE built-in evaluator',
+   568→    fetchedAt: new Date().toISOString(),
+   569→  }
+   570→}
+   571→
+   572→// --- Live web fallback (supplementary — spec §69) -------------------------
+   573→// Used ONLY when the local index returns 0 results AND the query looks like
+   574→// it needs fresh web content. The web_search SDK function returns live URLs +
+   575→// snippets; we surface them as supplementary results (clearly labeled).
+   576→//
+   577→// 3-tier fallback (highest quality first, lowest cost last):
+   578→//   1. BrightData SERP API (premium Google SERP — when BRIGHTDATA_TOKEN is
+   579→//      set + budget allows; falls back to (2) when budget is exhausted)
+   580→//   2. DuckDuckGo HTML search (free, no key)
+   581→//   3. (no further fallback — return [])
+   582→//
+   583→// The BrightData tier is OPTIONAL — when no token is configured, the engine
+   584→// works exactly as before, on the free DuckDuckGo tier.
+   585→
+   586→export async function runLiveWebSearch(query: string): Promise<LiveWebResult[]> {
+   587→  // Tier 1: BrightData SERP API (premium).
+   588→  try {
+   589→    const { brightDataSerp, isBrightDataSerpWorthIt } = await import('../brightdata')
+   590→    // Only spend BrightData budget on queries where it actually adds value.
+   591→    // Pure-math / unit-conversion / weather / time queries have their own
+   592→    // instant-answer tools — don't waste budget on them.
+   593→    if (isBrightDataSerpWorthIt(query, 0)) {
+   594→      const serpResults = await brightDataSerp(query, { num: 8 })
+   595→      if (serpResults && serpResults.length > 0) {
+   596→        return serpResults.map((r) => ({
+   597→          title: r.title,
+   598→          url: r.url,
+   599→          snippet: r.snippet,
+   600→          domain: r.domain,
+   601→          sourceType: r.sourceType,
+   602→        }))
+   603→      }
+   604→    }
+   605→  } catch {
+   606→    // BrightData module unavailable — fall through to DuckDuckGo.
+   607→  }
+   608→
+   609→  // Tier 2: DuckDuckGo HTML search (always free, always available).
+   610→  try {
+   611→    const { webSearch } = await import('../llm')
+   612→    const results = await webSearch(query, 8)
+   613→    if (!Array.isArray(results)) return []
+   614→    return results.map((r: any) => ({
+   615→      title: r.name ?? r.url,
+   616→      url: r.url,
+   617→      snippet: r.snippet ?? '',
+   618→      domain: r.host_name ?? new URL(r.url).hostname,
+   619→      sourceType: classifyLiveDomain(r.host_name ?? ''),
+   620→    }))
+   621→  } catch {
+   622→    return []
+   623→  }
+   624→}
+   625→
+   626→function classifyLiveDomain(host: string): string {
+   627→  const h = host.toLowerCase()
+   628→  if (h.endsWith('.gov') || h.includes('.gov.')) return 'GOVERNMENT'
+   629→  if (h.endsWith('.edu') || h.includes('ac.')) return 'ACADEMIC'
+   630→  if (/reuters|bbc|nytimes|guardian|apnews|bloomberg|economist/.test(h)) return 'NEWS'
+   631→  if (/stackoverflow|reddit|hacker|github/.test(h)) return 'COMMUNITY'
+   632→  if (/wikipedia/.test(h)) return 'COMMUNITY'
+   633→  if (/amazon|ebay|shop/.test(h)) return 'COMMERCIAL'
+   634→  return 'WEB'
+   635→}
+   636→
+   637→// --- Public entry point ----------------------------------------------------
+   638→
+   639→// --- Unit converter (offline, instant) ------------------------------------
+   640→const UNIT_FACTORS: Record<string, number> = {
+   641→  // length
+   642→  km: 1000, m: 1, mi: 1609.344, miles: 1609.344, feet: 0.3048, ft: 0.3048,
+   643→  inches: 0.0254, cm: 0.01, mm: 0.001,
+   644→  // mass
+   645→  kg: 1000, g: 1, lbs: 453.592, pounds: 453.592, oz: 28.3495,
+   646→  // volume
+   647→  liters: 1000, l: 1000, gallons: 3785.41, 'gallon': 3785.41,
+   648→  // time (base: seconds)
+   649→  seconds: 1, sec: 1, minutes: 60, min: 60, hours: 3600, hr: 3600,
+   650→  days: 86400, weeks: 604800,
+   651→  // data
+   652→  mb: 1e6, gb: 1e9, tb: 1e12,
+   653→}
+   654→
+   655→const TEMP_UNITS = new Set(['c', 'f', 'celsius', 'fahrenheit'])
+   656→
+   657→function runConvertTool(query: string): InstantAnswer | null {
+   658→  const m = query.match(/([\d.]+)\s*(km|mi|miles|kg|lbs|pounds|g|oz|c|f|celsius|fahrenheit|liters?|l|gallons?|hours?|hrs?|minutes?|mins?|seconds?|secs?|days?|weeks?|feet|ft|inches|cm|mm|mb|gb|tb)\s*(?:in|to|→)\s*(km|mi|miles|kg|lbs|pounds|g|oz|c|f|celsius|fahrenheit|liters?|l|gallons?|hours?|hrs?|minutes?|mins?|seconds?|secs?|days?|weeks?|feet|ft|inches|cm|mm|mb|gb|tb)/i)
+   659→  if (!m) return null
+   660→  const value = parseFloat(m[1])
+   661→  const fromUnit = m[2].toLowerCase()
+   662→  const toUnit = m[3].toLowerCase()
+   663→  if (isNaN(value)) return null
+   664→
+   665→  // Temperature
+   666→  if (TEMP_UNITS.has(fromUnit) && TEMP_UNITS.has(toUnit)) {
+   667→    let celsius: number
+   668→    if (fromUnit.startsWith('c')) celsius = value
+   669→    else celsius = (value - 32) * 5 / 9
+   670→    let result: number
+   671→    if (toUnit.startsWith('c')) result = celsius
+   672→    else result = celsius * 9 / 5 + 32
+   673→    return {
+   674→      kind: 'convert',
+   675→      title: `${value}°${fromUnit[0].toUpperCase()} → ${Math.round(result * 100) / 100}°${toUnit[0].toUpperCase()}`,
+   676→      summary: `${value}°${fromUnit[0].toUpperCase()} = ${Math.round(result * 100) / 100}°${toUnit[0].toUpperCase()}`,
+   677→      facts: [
+   678→        { label: 'Input', value: `${value}°${fromUnit[0].toUpperCase()}` },
+   679→        { label: 'Result', value: `${Math.round(result * 100) / 100}°${toUnit[0].toUpperCase()}` },
+   680→      ],
+   681→      source: 'CIRKLE built-in converter',
+   682→      fetchedAt: new Date().toISOString(),
+   683→    }
+   684→  }
+   685→
+   686→  // Other units (convert via base unit)
+   687→  const fromFactor = UNIT_FACTORS[fromUnit]
+   688→  const toFactor = UNIT_FACTORS[toUnit]
+   689→  if (fromFactor === undefined || toFactor === undefined) return null
+   690→  const result = (value * fromFactor) / toFactor
+   691→  const rounded = Math.round(result * 10000) / 10000
+   692→  return {
+   693→    kind: 'convert',
+   694→    title: `${value} ${fromUnit} → ${rounded} ${toUnit}`,
+   695→    summary: `${value} ${fromUnit} = ${rounded} ${toUnit}`,
+   696→    facts: [
+   697→      { label: 'Input', value: `${value} ${fromUnit}` },
+   698→      { label: 'Result', value: `${rounded} ${toUnit}` },
+   699→    ],
+   700→    source: 'CIRKLE built-in converter',
+   701→    fetchedAt: new Date().toISOString(),
+   702→  }
+   703→}
+   704→
+   705→// --- Currency converter (live rates via web_search) -----------------------
+   706→async function runCurrencyTool(query: string): Promise<InstantAnswer | null> {
+   707→  const m = query.match(/([\d.,]+)\s*(usd|eur|gbp|jpy|cny|aed|sar|egp|inr|cad|aud|chf|dollars?|euros?|pounds?)\s*(?:in|to|→)\s*(usd|eur|gbp|jpy|cny|aed|sar|egp|inr|cad|aud|chf|dollars?|euros?|pounds?)/i)
+   708→  if (!m) return null
+   709→  const amount = parseFloat(m[1].replace(/,/g, ''))
+   710→  const fromRaw = m[2].toLowerCase()
+   711→  const toRaw = m[3].toLowerCase()
+   712→  if (isNaN(amount)) return null
+   713→
+   714→  // Normalize currency names to codes
+   715→  const normalizeCur = (c: string): string => {
+   716→    if (c.startsWith('dollar')) return 'USD'
+   717→    if (c.startsWith('euro')) return 'EUR'
+   718→    if (c.startsWith('pound')) return 'GBP'
+   719→    return c.toUpperCase()
+   720→  }
+   721→  const fromCur = normalizeCur(fromRaw)
+   722→  const toCur = normalizeCur(toRaw)
+   723→
+   724→  try {
+   725→    const { webSearch, chatCompletion } = await import('../llm')
+   726→    const results = await webSearch(`${amount} ${fromCur} to ${toCur} exchange rate`, 3)
+   727→    if (!Array.isArray(results) || results.length === 0) return null
+   728→
+   729→    // Ask the LLM to extract the conversion result from the snippets.
+   730→    const context = results.slice(0, 3).map((r: any, i: number) => `[${i + 1}] ${r.name}\n${r.snippet}`).join('\n\n')
+   731→    const completion = await chatCompletion([
+   732→      { role: 'system', content: 'You are a currency converter. Given search snippets with exchange rates, compute the conversion. Return ONLY valid JSON: {"rate": number, "result": number, "description": "brief text"}. No prose.' },
+   733→      { role: 'user', content: `Convert ${amount} ${fromCur} to ${toCur}.\n\nSnippets:\n${context}` },
+   734→    ])
+   735→    const raw = completion?.content
+   736→    if (!raw) return null
+   737→    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+   738→    if (!jsonMatch) return null
+   739→    const parsed = JSON.parse(jsonMatch[0])
+   740→    const result = typeof parsed.result === 'number' ? parsed.result : null
+   741→    const rate = typeof parsed.rate === 'number' ? parsed.rate : null
+   742→    if (result === null) return null
+   743→
+   744→    return {
+   745→      kind: 'currency',
+   746→      title: `${amount} ${fromCur} → ${toCur}`,
+   747→      summary: `${amount} ${fromCur} = ${Math.round(result * 100) / 100} ${toCur}${rate ? ` (rate: 1 ${fromCur} = ${rate} ${toCur})` : ''}`,
+   748→      facts: [
+   749→        { label: 'Amount', value: `${amount} ${fromCur}` },
+   750→        { label: 'Result', value: `${Math.round(result * 100) / 100} ${toCur}` },
+   751→        ...(rate ? [{ label: 'Exchange rate', value: `1 ${fromCur} = ${rate} ${toCur}` }] : []),
+   752→      ],
+   753→      source: 'Live web (via z.ai web_search)',
+   754→      sourceUrl: results[0]?.url,
+   755→      fetchedAt: new Date().toISOString(),
+   756→    }
+   757→  } catch {
+   758→    return null
+   759→  }
+   760→}
+   761→
+   762→export async function runTool(
+   763→  query: string
+   764→): Promise<{ instantAnswer: InstantAnswer | null; liveWeb: LiveWebResult[] }> {
+   765→  const detection = detectTool(query)
+   766→  if (detection.kind === 'weather') {
+   767→    const instantAnswer = await runWeatherTool(detection.param)
+   768→    return { instantAnswer, liveWeb: [] }
+   769→  }
+   770→  if (detection.kind === 'time') {
+   771→    const instantAnswer = await runTimeTool(detection.param)
+   772→    return { instantAnswer, liveWeb: [] }
+   773→  }
+   774→  if (detection.kind === 'math') {
+   775→    const instantAnswer = runMathTool(detection.param)
+   776→    return { instantAnswer, liveWeb: [] }
+   777→  }
+   778→  if (detection.kind === 'convert') {
+   779→    const instantAnswer = runConvertTool(detection.param)
+   780→    return { instantAnswer, liveWeb: [] }
+   781→  }
+   782→  if (detection.kind === 'currency') {
+   783→    const instantAnswer = await runCurrencyTool(detection.param)
+   784→    return { instantAnswer, liveWeb: [] }
+   785→  }
+   786→  return { instantAnswer: null, liveWeb: [] }
+   787→}
+   788→
+   789→/** Should this query trigger a live-web fallback when the index is empty? */
+   790→export function shouldLiveWebFallback(query: string, indexResultCount: number): boolean {
+   791→  if (indexResultCount > 0) return false
+   792→  const parsed = parseQuery(query)
+   793→  if (parsed.tokens.length < 2) return false
+   794→  // Don't fallback for pure navigational queries (single brand name) — those
+   795→  // are better served by the index.
+   796→  if (parsed.intent === 'navigational' && parsed.tokens.length <= 2) return false
+   797→  return true
+   798→}
+   799→
