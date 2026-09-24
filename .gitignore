@@ -58,3 +58,10 @@ server.log
 /skills/
 # local SQLite (production uses Postgres/Neon)
 /db/
+
+# tool results (transient)
+/tool-results/
+
+# stray prisma db files
+prisma/*.db
+prisma/*.db-journal

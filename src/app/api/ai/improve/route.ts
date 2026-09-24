@@ -8,17 +8,25 @@ export const dynamic = "force-dynamic";
 // multi-model consensus (best-confidence pick). Instructions: professional,
 // concise, friendly, urgent, add-call-to-action, fix-grammar.
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => ({}));
-  const text: string = (body?.text ?? "").trim();
-  const instruction: string = (body?.instruction ?? "professional").trim();
+  try {
+    const body = await request.json().catch(() => ({}));
+    const text: string = (body?.text ?? "").trim();
+    const instruction: string = (body?.instruction ?? "professional").trim();
 
-  if (!text) {
-    return NextResponse.json({ error: "text is required" }, { status: 400 });
-  }
+    if (!text) {
+      return NextResponse.json({ error: "text is required" }, { status: 400 });
+    }
 
-  const result = await aiImprove({ text, instruction });
-  if (result) {
-    return NextResponse.json(result);
+    const result = await aiImprove({ text, instruction });
+    if (result) {
+      return NextResponse.json(result);
+    }
+    return NextResponse.json({ error: "Could not improve text" }, { status: 503 });
+  } catch (err) {
+    console.error("[ai/improve] error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Unknown error" },
+      { status: 500 }
+    );
   }
-  return NextResponse.json({ error: "Could not improve text" }, { status: 503 });
 }

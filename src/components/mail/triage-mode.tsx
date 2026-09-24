@@ -118,7 +118,7 @@ export function TriageMode() {
 
   if (!open) return null;
 
-  const done = queue.length === 0 && !loading;
+  const done = idx > 0 && queue.length === 0 && !loading;
 
   return (
     <div className="aurora-bg fixed inset-0 z-40 flex flex-col bg-background/95 backdrop-blur-md">
