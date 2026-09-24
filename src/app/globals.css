@@ -152,7 +152,21 @@
 @layer base {
   :root { --text-scale: 1; }
   * { border-color: hsl(var(--border)); }
-  html { -webkit-font-smoothing: antialiased; font-size: calc(16px * var(--text-scale)); }
+  /* Smooth scroll + branded focus rings. Reduced-motion users get auto + no
+     transition jank. */
+  html {
+    -webkit-font-smoothing: antialiased;
+    font-size: calc(16px * var(--text-scale));
+    scroll-behavior: smooth;
+  }
+  /* Global branded focus ring — gold outline that matches the CIRKLE brand.
+     Only fires on keyboard focus (mouse clicks don't trigger :focus-visible),
+     so we don't pollute the visual chrome on mouse users. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--gold));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
@@ -256,9 +270,51 @@
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.04); }
   }
+
+  /* Shimmer: a moving highlight overlay for loading skeletons. The
+     `.shimmer-overlay` element is positioned absolutely inside a
+     `relative overflow-hidden` parent and sweeps left → right every 1.6s. */
+  .shimmer-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--background) / 0.55) 50%,
+      transparent 100%
+    );
+    transform: translateX(-100%);
+    animation: cirkleShimmer 1.6s ease-in-out infinite;
+  }
+  @keyframes cirkleShimmer {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  /* Spotlight: a soft radial gradient that follows the cursor on the home
+     hero. The CSS custom properties (--spot-x, --spot-y) are written by JS
+     on `pointermove` (rAF-throttled). Opacity 0 here means "no spotlight
+     yet" — the parent toggles `.spotlight-active` when the cursor is
+     actually over the hero so the gradient fades in/out smoothly. */
+  .hero-spotlight {
+    background: radial-gradient(
+      circle 300px at var(--spot-x, 50%) var(--spot-y, 50%),
+      hsl(var(--gold) / 0.15),
+      hsl(var(--teal) / 0.08) 45%,
+      transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 320ms ease;
+    will-change: background, opacity;
+  }
+  .hero-spotlight.spotlight-active {
+    opacity: 1;
+  }
 }
 
-/* Accessibility: respect reduced-motion */
+/* Accessibility: respect reduced-motion — disable animations + smooth
+   scroll so users with vestibular disorders don't get jolted. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -266,4 +322,7 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  html { scroll-behavior: auto !important; }
+  .hero-spotlight { display: none !important; }
+  .shimmer-overlay { display: none !important; }
 }

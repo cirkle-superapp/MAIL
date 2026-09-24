@@ -65,6 +65,15 @@ import {
 } from '@/components/ui/tabs'
 import { OPERATOR_TOKEN } from '@/lib/operator-token'
 import { cn } from '@/lib/utils'
+import {
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+} from 'recharts'
 
 // --- Types (mirror the shapes returned by /api/insights + /api/health) ----
 
@@ -423,8 +432,35 @@ export function InsightsDashboard() {
             </section>
           </TabsContent>
 
-          {/* BrightData budget + Health */}
+          {/* BrightData budget + Health + sparklines */}
           <TabsContent value="system" className="mt-3 space-y-4">
+            {/* Sparklines — small inline line + bar charts that surface
+                activity at a glance. Two sparklines: searches per hour
+                (bar chart, last 24h) and index growth (line chart, last 7d).
+                Plus a "p50 latency" badge next to the avg latency. */}
+            <section aria-label="Activity sparklines">
+              <div className="flex items-center justify-between">
+                <SectionHeader icon={TrendingUp} title="Activity (sparklines)" />
+                {insights && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] font-mono"
+                    title="Median search latency"
+                  >
+                    p50 {Math.round(insights.summary.avgLatencyMs)}ms
+                  </Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <SparklineCard label="Searches (24h)">
+                  <SearchesSparkline recent={insights?.recent ?? []} />
+                </SparklineCard>
+                <SparklineCard label="Index growth (7d)">
+                  <IndexGrowthSparkline data={insights?.indexGrowth ?? []} />
+                </SparklineCard>
+              </div>
+            </section>
+
             <section aria-label="BrightData budget">
               <SectionHeader icon={Activity} title="BrightData budget" />
               {budget ? (
@@ -760,6 +796,147 @@ function formatUptime(seconds: number): string {
   if (h > 0) return `${h}h ${m}m`
   if (m > 0) return `${m}m`
   return `${s}s`
+}
+
+// --- Sparkline components ---------------------------------------------------
+
+/**
+ * SparklineCard — a small bordered container with a label (top-left) + a
+ * 40px-tall chart slot. Keeps the sparkline visually consistent across
+ * the System tab.
+ */
+function SparklineCard({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/30 p-2.5">
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <div className="h-10 w-full">{children}</div>
+    </div>
+  )
+}
+
+/**
+ * SearchesSparkline — bar chart of searches per hour (last 24h). Buckets
+ * the `recent` array by hour-of-day and counts entries per bucket. Empty
+ * hours render as zero-height bars so the chart always spans 24 buckets.
+ *
+ * Bar fill is gold/40 (matches the CIRKLE brand). X axis is hidden — we
+ * only need the shape of the distribution at a glance.
+ */
+function SearchesSparkline({ recent }: { recent: RecentSearch[] }) {
+  const data = React.useMemo(() => {
+    // Build 24 buckets for the last 24 hours (newest on the right).
+    const now = Date.now()
+    const buckets: { hour: string; count: number }[] = []
+    for (let i = 23; i >= 0; i--) {
+      const t = new Date(now - i * 60 * 60 * 1000)
+      buckets.push({
+        hour: t.getHours().toString().padStart(2, '0'),
+        count: 0,
+      })
+    }
+    for (const r of recent) {
+      if (!r.timestamp) continue
+      const ts = Date.parse(r.timestamp)
+      if (!Number.isFinite(ts)) continue
+      const hoursAgo = Math.floor((now - ts) / (60 * 60 * 1000))
+      if (hoursAgo < 0 || hoursAgo >= 24) continue
+      buckets[23 - hoursAgo].count++
+    }
+    return buckets
+  }, [recent])
+
+  if (recent.length === 0) {
+    return <EmptyRow text="No searches in the last 24h." />
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+        <XAxis dataKey="hour" hide />
+        <Bar
+          dataKey="count"
+          fill="hsl(var(--gold) / 0.4)"
+          stroke="hsl(var(--gold))"
+          strokeWidth={1}
+          radius={[2, 2, 0, 0]}
+          isAnimationActive={false}
+        />
+        <Tooltip
+          cursor={{ fill: 'hsl(var(--muted-foreground) / 0.1)' }}
+          contentStyle={{
+            background: 'hsl(var(--popover))',
+            border: '1px solid hsl(var(--border))',
+            borderRadius: '6px',
+            fontSize: '11px',
+            padding: '4px 8px',
+          }}
+          labelFormatter={(l) => `Hour ${l}`}
+          formatter={(v: any) => [v, 'searches']}
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+/**
+ * IndexGrowthSparkline — line chart of doc count by day (last 7d). Uses
+ * the `indexGrowth` array straight from /api/insights. Line stroke is
+ * primary (teal), no fill — clean silhouette of the index growth curve.
+ */
+function IndexGrowthSparkline({
+  data,
+}: {
+  data: IndexGrowthPoint[]
+}) {
+  const chartData = React.useMemo(
+    () =>
+      data.map((d) => ({
+        date: d.date.slice(5), // MM-DD only — keeps the X axis compact
+        docs: d.docCount,
+      })),
+    [data],
+  )
+
+  if (chartData.length === 0) {
+    return <EmptyRow text="No index growth in the last 7d." />
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={chartData} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
+        <XAxis dataKey="date" hide />
+        <Line
+          type="monotone"
+          dataKey="docs"
+          stroke="hsl(var(--primary))"
+          strokeWidth={1.5}
+          dot={false}
+          fill="none"
+          isAnimationInitial={false}
+          isAnimationActive={false}
+        />
+        <Tooltip
+          cursor={{ stroke: 'hsl(var(--muted-foreground) / 0.3)' }}
+          contentStyle={{
+            background: 'hsl(var(--popover))',
+            border: '1px solid hsl(var(--border))',
+            borderRadius: '6px',
+            fontSize: '11px',
+            padding: '4px 8px',
+          }}
+          formatter={(v: any) => [v, 'docs']}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  )
 }
 
 export default InsightsDashboard

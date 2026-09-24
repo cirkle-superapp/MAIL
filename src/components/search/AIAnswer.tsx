@@ -115,7 +115,7 @@ export function AIAnswer({ aiAnswer }: AIAnswerProps) {
   // superscript badges that scroll to the citation.
   const mdComponents = {
     p: ({ node, ...props }: any) => (
-      <p className="text-sm leading-relaxed text-foreground/90" {...props} />
+      <p className="text-base leading-relaxed text-foreground/90" {...props} />
     ),
     text: ({ children }: any) => {
       if (typeof children !== 'string') return children
@@ -155,16 +155,21 @@ export function AIAnswer({ aiAnswer }: AIAnswerProps) {
   return (
     <Card
       className={cn(
-        'border-l-4 border-l-primary border-t-0 border-r-0 border-b-0',
-        'border border-border bg-card shadow-sm',
+        // Gold left accent — the CIRKLE brand mark for AI surfaces.
+        'border-l-2 border-l-gold border-t-0 border-r-0 border-b-0',
+        // Glass + premium shadow so the AI Overview floats above the
+        // organic results (Google SGE / Perplexity answer-card vibe).
+        'glass shadow-glass',
         'py-0',
       )}
     >
       <CardHeader className="pb-3 pt-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Sparkles className="size-5 text-primary" aria-hidden />
-            <CardTitle className="text-base font-semibold">AI Answer</CardTitle>
+            <Sparkles className="size-5 text-gold" aria-hidden />
+            <CardTitle className="font-display text-lg font-semibold leading-tight">
+              <span className="gradient-text-gold">AI Overview</span>
+            </CardTitle>
           </div>
           <Badge variant="outline" className={status.badge}>
             {status.label}

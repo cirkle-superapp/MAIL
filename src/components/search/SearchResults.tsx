@@ -37,6 +37,14 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react'
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  animate,
+  useReducedMotion as useFramerReducedMotion,
+  type Variants,
+} from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
@@ -51,6 +59,7 @@ import { CommandPalette } from './CommandPalette'
 import { InterpretedQuery } from './InterpretedQuery'
 import { AIAnswer } from './AIAnswer'
 import { KnowledgeCard } from './KnowledgeCard'
+import { KnowledgeSidebar } from './KnowledgeSidebar'
 import { SponsoredCard } from './SponsoredCard'
 import { InstantAnswerCard } from './InstantAnswerCard'
 import { ResultCard } from './ResultCard'
@@ -266,18 +275,25 @@ export function SearchResults() {
           </div>
         )}
 
-        {/* Result count + timing */}
+        {/* Result count + timing. The count + seconds animate (count-up
+            from 0) so the SERP feels alive + responsive instead of just
+            snapping in. */}
         {results && !loading && !error && (
           <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>
               About{' '}
               <span className="font-medium text-foreground">
-                {formatCount(results.pagination.totalResults)}
+                <CountUp value={results.pagination.totalResults} />
               </span>{' '}
               results
               {elapsed != null && (
                 <span className="ml-1 text-xs">
-                  ({elapsed.toFixed(2)} seconds)
+                  (<CountUp
+                    value={elapsed}
+                    duration={0.7}
+                    format={(n) => n.toFixed(2)}
+                  />{' '}
+                  seconds)
                 </span>
               )}
             </span>
@@ -319,23 +335,40 @@ export function SearchResults() {
             <AIAnswer aiAnswer={results.aiAnswer} />
           </div>
         )}
+        {/* AI Overview loading state — shimmer lines inside a glass card
+            that visually matches the final AI Overview (so the layout
+            doesn't shift when the answer arrives). Uses the same gold
+            left accent + shadow-glass as the real card. */}
         {!loading && !results?.aiAnswer && aiLayerLoading && (
-          <div className="mb-4 animate-pulse rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div
+            className="glass mb-4 overflow-hidden rounded-xl border-l-2 border-l-gold p-4 shadow-glass"
+            role="status"
+            aria-live="polite"
+            aria-label="Generating AI overview"
+          >
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
+              <Loader2 className="size-4 animate-spin text-gold" aria-hidden />
               <span>Synthesizing evidence-grounded AI answer…</span>
             </div>
             <div className="mt-3 space-y-2">
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-5/6" />
-              <Skeleton className="h-3 w-2/3" />
+              <ShimmerBar className="h-3.5 w-full" />
+              <ShimmerBar className="h-3.5 w-[88%]" />
+              <ShimmerBar className="h-3.5 w-[68%]" />
             </div>
           </div>
         )}
 
-        {/* Loading state — 5 skeleton cards */}
+        {/* Loading state — 5 skeleton cards with a shimmer sweep overlay.
+            Mirrors the ResultCard layout (favicon + domain + title + URL +
+            two snippet lines + metadata badges) so the layout doesn't shift
+            when real results arrive. role=status + aria-busy on <main>
+            above already tells AT users what's happening. */}
         {loading && (
-          <div className="space-y-1">
+          <div
+            className="space-y-1"
+            role="status"
+            aria-label="Loading search results"
+          >
             {Array.from({ length: 5 }).map((_, i) => (
               <ResultCardSkeleton key={i} />
             ))}
@@ -393,30 +426,61 @@ export function SearchResults() {
           </Card>
         )}
 
-        {/* Organic results list + Knowledge Card sidebar (2-col on desktop) */}
-        {/* IMAGES mode: render an image grid instead of text cards */}
+        {/* Organic results list + Knowledge Sidebar (desktop) / inline
+            Knowledge Card (mobile). IMAGES mode renders an image grid
+            instead of text cards. */}
         {!loading && !error && results && results.results.length > 0 && mode === 'IMAGES' && (
           <div>
             <ImageGrid results={results.results} />
           </div>
         )}
-        {/* Normal text results (all non-IMAGES modes) */}
+        {/* Normal text results (all non-IMAGES modes). Staggered entrance:
+            each card springs in from y:12 with a 50ms stagger (capped at
+            ~10 cards so long lists don't drag). whileHover lifts the card
+            by 2px without breaking the existing border-l-2 hover effect
+            (that's on the inner <article>, this is the outer wrapper). */}
         {!loading && !error && results && results.results.length > 0 && mode !== 'IMAGES' && (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section aria-label="Organic results" className="min-w-0 space-y-0">
+            {/* Mobile-only inline knowledge card at the top of the results.
+                Hidden at lg+ where the sidebar takes over. */}
+            {results.knowledgeCard && (
+              <div className="mb-2 lg:hidden">
+                <KnowledgeCard card={results.knowledgeCard} />
+              </div>
+            )}
+            <motion.section
+              aria-label="Organic results"
+              className="min-w-0 space-y-0"
+              variants={RESULTS_CONTAINER_VARIANTS}
+              initial="hidden"
+              animate="show"
+            >
               {results.results.map((r, i) => (
                 <React.Fragment key={r.id}>
                   {i > 0 && <Separator className="my-0" />}
-                  <ResultCard result={r} rank={i + 1 + (results.pagination.page - 1) * results.pagination.pageSize} onSummary={(docId) => {
-                    setSummaryDocId(docId)
-                    setSummaryResult({ title: r.title, url: r.url, sourceType: r.sourceType })
-                  }} />
+                  <motion.div
+                    variants={RESULT_ITEM_VARIANTS}
+                    whileHover={{ y: -2, transition: { duration: 0.2 } }}
+                  >
+                    <ResultCard
+                      result={r}
+                      rank={i + 1 + (results.pagination.page - 1) * results.pagination.pageSize}
+                      onSummary={(docId) => {
+                        setSummaryDocId(docId)
+                        setSummaryResult({ title: r.title, url: r.url, sourceType: r.sourceType })
+                      }}
+                    />
+                  </motion.div>
                 </React.Fragment>
               ))}
-            </section>
+            </motion.section>
+            {/* Desktop-only sticky knowledge sidebar. */}
             {results.knowledgeCard && (
-              <aside aria-label="Knowledge card" className="lg:sticky lg:top-20 lg:self-start">
-                <KnowledgeCard card={results.knowledgeCard} />
+              <aside
+                aria-label="Knowledge sidebar"
+                className="hidden lg:block"
+              >
+                <KnowledgeSidebar card={results.knowledgeCard} />
               </aside>
             )}
           </div>
@@ -503,25 +567,161 @@ export function SearchResults() {
   )
 }
 
+/**
+ * Loading skeleton for a single ResultCard. Uses the shadcn <Skeleton> base
+ * (rounded-md + animate-pulse) PLUS a moving `.shimmer-overlay` highlight
+ * sweep on top — gives a premium "data is loading" feel rather than a static
+ * grey block. The aria-hidden + role=status wrapper makes it polite to screen
+ * readers.
+ *
+ * Layout mirrors ResultCard: favicon(16px) + domain(14px) on top, full-width
+ * title (20px), URL (14px), then two snippet lines (14px @ 90% + 70%).
+ */
 function ResultCardSkeleton() {
   return (
     <div className="py-4" aria-hidden="true">
-      <div className="flex items-center gap-2">
-        <Skeleton className="size-2.5 rounded-full" />
-        <Skeleton className="h-3 w-40" />
+      {/* Favicon + domain */}
+      <div className="relative flex items-center gap-2">
+        <ShimmerBar className="size-4 rounded-sm" />
+        <ShimmerBar className="h-3.5 w-40" />
       </div>
-      <Skeleton className="mt-2 h-5 w-3/4" />
-      <Skeleton className="mt-1 h-3 w-1/2" />
-      <Skeleton className="mt-2 h-3 w-full" />
-      <Skeleton className="mt-1 h-3 w-5/6" />
-      <Skeleton className="mt-1 h-3 w-2/3" />
+      {/* Title */}
+      <ShimmerBar className="mt-2 h-5 w-3/4" />
+      {/* URL breadcrumb */}
+      <ShimmerBar className="mt-1 h-3 w-1/2" />
+      {/* Snippet line 1 (90% width) */}
+      <ShimmerBar className="mt-2 h-3.5 w-[90%]" />
+      {/* Snippet line 2 (70% width) */}
+      <ShimmerBar className="mt-1 h-3.5 w-[70%]" />
+      {/* Metadata badges */}
       <div className="mt-2 flex gap-2">
-        <Skeleton className="h-4 w-14" />
-        <Skeleton className="h-4 w-16" />
-        <Skeleton className="h-4 w-12" />
+        <ShimmerBar className="h-4 w-14" />
+        <ShimmerBar className="h-4 w-16" />
+        <ShimmerBar className="h-4 w-12" />
       </div>
     </div>
   )
+}
+
+/**
+ * A single shimmer bar: the shadcn <Skeleton> base + an absolutely-positioned
+ * `.shimmer-overlay` sweep on top. The parent <Skeleton> is `relative` so
+ * the overlay aligns to the bar's rounded corners.
+ *
+ * Reduced-motion users see no sweep (the `.shimmer-overlay` class hides via
+ * display:none under `prefers-reduced-motion: reduce`).
+ */
+function ShimmerBar({ className }: { className?: string }) {
+  return (
+    <Skeleton className={cn('relative overflow-hidden', className)}>
+      <span className="shimmer-overlay" />
+    </Skeleton>
+  )
+}
+
+/**
+ * Count-up display: animates a number from 0 → N over 800ms using Framer
+ * Motion's `animate()` (spring physics for a satisfying deceleration).
+ * Re-runs whenever `value` changes (e.g. when a new search returns).
+ *
+ * Used for "About N results" so the number ticks up rather than appearing
+ * instantly — feels faster + more alive than a hard swap.
+ */
+function CountUp({
+  value,
+  duration = 0.8,
+  format = (n: number) => formatCount(Math.round(n)),
+  className,
+}: {
+  value: number
+  duration?: number
+  format?: (n: number) => string
+  className?: string
+}) {
+  const mv = useMotionValue(0)
+  // Spring-smoothed motion value — the spring's damping/stiffness produce
+  // the satisfying "settle" feel rather than a linear tween.
+  const spring = useSpring(mv, { stiffness: 90, damping: 18, mass: 0.6 })
+  const [display, setDisplay] = React.useState('0')
+  const prefersReducedMotion = usePrefersReducedMotion()
+
+  // Animate the motion value from 0 → value whenever `value` changes.
+  React.useEffect(() => {
+    if (prefersReducedMotion) {
+      setDisplay(format(value))
+      return
+    }
+    const controls = animate(mv, value, {
+      duration,
+      ease: [0.16, 1, 0.3, 1],
+    })
+    return () => controls.stop()
+  }, [value, duration, mv, prefersReducedMotion, format])
+
+  // Subscribe to spring changes → format + setState. Wrapped in rAF-throttled
+  // requestAnimationFrame so we don't re-render React 60x/sec.
+  React.useEffect(() => {
+    let rafId = 0
+    const update = (v: number) => {
+      if (rafId) return
+      rafId = requestAnimationFrame(() => {
+        rafId = 0
+        setDisplay(format(v))
+      })
+    }
+    const unsub = spring.on('change', update)
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      unsub()
+    }
+  }, [spring, format])
+
+  return <span className={className}>{display}</span>
+}
+
+/**
+ * Framer Motion variants for the staggered entrance of result cards. The
+ * container orchestrates children with a 50ms stagger; each child springs
+ * in from y:12 with a slight scale-up.
+ */
+const RESULTS_CONTAINER_VARIANTS: Variants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+      delayChildren: 0.02,
+      // Cap the stagger so a 10-result page finishes around 0.45s — long
+      // result lists don't drag the entrance out forever.
+      staggerDirection: 1,
+    },
+  },
+}
+
+const RESULT_ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0, y: 12, scale: 0.98 },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      type: 'spring',
+      stiffness: 220,
+      damping: 22,
+      mass: 0.9,
+    },
+  },
+}
+
+/**
+ * Hook: returns true if the user prefers reduced motion. Same as
+ * framer-motion's `useReducedMotion` but normalizes to a boolean (the
+ * framer-motion hook returns `null` before mount which is awkward for
+ * effect deps).
+ */
+function usePrefersReducedMotion(): boolean {
+  const v = useFramerReducedMotion()
+  return v ?? false
 }
 
 export default SearchResults

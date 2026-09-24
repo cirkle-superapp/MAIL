@@ -85,6 +85,9 @@ export function ResultCard({ result, rank, onSummary }: ResultCardProps) {
   const [whyOpen, setWhyOpen] = React.useState(false)
   const [clusterOpen, setClusterOpen] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
+  // Favicon state: try to load the real favicon; if it fails, fall back
+  // to the source-type colored dot.
+  const [faviconError, setFaviconError] = React.useState(false)
 
   const st = sourceTypeStyle(result.sourceType)
   const { host, path } = urlParts(result.url)
@@ -93,6 +96,10 @@ export function ResultCard({ result, rank, onSummary }: ResultCardProps) {
   const strength = matchStrength(result.relevanceScore)
   const strengthPct =
     strength === 'High' ? 90 : strength === 'Medium' ? 60 : 30
+
+  // Favicon URL: Google's S2 favicon service. `sz=32` returns a 32x32 PNG
+  // that we display at 16x16 (size-4) on retina screens.
+  const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
 
   const onCopyLink = async () => {
     try {
@@ -115,16 +122,34 @@ export function ResultCard({ result, rank, onSummary }: ResultCardProps) {
       aria-label={`Result ${rank}: ${result.title}`}
       data-result-id={result.id}
     >
-      {/* Top line: dot + domain + path + more menu */}
+      {/* Top line: favicon + domain + path + more menu */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <span
-            className={cn(
-              'inline-block size-2.5 rounded-full',
-              st.favicon,
-            )}
+            className="inline-flex size-4 shrink-0 items-center justify-center overflow-hidden rounded-sm"
             aria-hidden
-          />
+          >
+            {faviconError ? (
+              // Fallback: the original source-type colored dot.
+              <span
+                className={cn(
+                  'inline-block size-2.5 rounded-full',
+                  st.favicon,
+                )}
+              />
+            ) : (
+              <img
+                src={faviconUrl}
+                alt=""
+                width={16}
+                height={16}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={() => setFaviconError(true)}
+                className="size-4 object-contain"
+              />
+            )}
+          </span>
           <span className="truncate font-mono">{host}</span>
           {path && path !== '/' && (
             <span className="truncate text-muted-foreground/80">› {path}</span>

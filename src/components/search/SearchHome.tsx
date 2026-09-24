@@ -20,7 +20,7 @@ import {
   Database, Loader2, ShieldCheck, Search, Sparkles,
   Brain, ListTree, Filter, Layers, Zap,
 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion as useFramerReducedMotion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
@@ -52,6 +52,50 @@ export function SearchHome() {
   const hydrateFromUrl = useSearchStore((s) => s.hydrateFromUrl)
   const { toast } = useToast()
   const [seeding, setSeeding] = React.useState(false)
+
+  // --- Hero spotlight: a soft radial gradient that follows the cursor over
+  //     the hero area. We write CSS custom properties (--spot-x/y) onto the
+  //     hero wrapper element so the gradient position updates smoothly at
+  //     60fps without re-rendering React. requestAnimationFrame batching
+  //     avoids layout thrashing on high-frequency pointermove events.
+  const heroRef = React.useRef<HTMLDivElement>(null)
+  const prefersReducedMotion = useFramerReducedMotion() ?? false
+  React.useEffect(() => {
+    if (prefersReducedMotion) return
+    const wrapper = heroRef.current
+    if (!wrapper) return
+    // The actual spotlight overlay (child div with .hero-spotlight class).
+    const spot = wrapper.querySelector<HTMLElement>('.hero-spotlight')
+    if (!spot) return
+    let rafId = 0
+    let nextX = 0
+    let nextY = 0
+    const apply = () => {
+      rafId = 0
+      // Custom properties cascade, so set them on the wrapper — the child
+      // .hero-spotlight will inherit + render its radial-gradient at that
+      // position.
+      wrapper.style.setProperty('--spot-x', `${nextX}px`)
+      wrapper.style.setProperty('--spot-y', `${nextY}px`)
+    }
+    const onMove = (e: PointerEvent) => {
+      const rect = wrapper.getBoundingClientRect()
+      nextX = e.clientX - rect.left
+      nextY = e.clientY - rect.top
+      if (!rafId) rafId = requestAnimationFrame(apply)
+    }
+    const onEnter = () => spot.classList.add('spotlight-active')
+    const onLeave = () => spot.classList.remove('spotlight-active')
+    wrapper.addEventListener('pointermove', onMove, { passive: true })
+    wrapper.addEventListener('pointerenter', onEnter, { passive: true })
+    wrapper.addEventListener('pointerleave', onLeave, { passive: true })
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      wrapper.removeEventListener('pointermove', onMove)
+      wrapper.removeEventListener('pointerenter', onEnter)
+      wrapper.removeEventListener('pointerleave', onLeave)
+    }
+  }, [prefersReducedMotion])
 
   React.useEffect(() => {
     void hydrateFromUrl()
@@ -108,11 +152,21 @@ export function SearchHome() {
   })
 
   return (
-    <div className="relative min-h-screen flex flex-col overflow-hidden bg-background">
+    <div ref={heroRef} className="relative min-h-screen flex flex-col overflow-hidden bg-background">
       {/* Aurora gradient background — the CIRKLE brand signature. Three
           radial orbs (rose / teal / gold) that float gently. */}
       <div
         className="pointer-events-none absolute inset-0 bg-gradient-aurora"
+        aria-hidden
+      />
+      {/* Hero spotlight — a soft radial gradient that follows the cursor
+          across the top ~70vh of the page. Disabled under reduced-motion
+          (the .hero-spotlight class hides via display:none) and never
+          tracks touch / pointer events with no hover. Listeners are bound
+          to the outer wrapper so they fire even though this overlay is
+          pointer-events-none. */}
+      <div
+        className="hero-spotlight pointer-events-none absolute inset-x-0 top-0 h-[80vh]"
         aria-hidden
       />
       {/* Floating orbs — premium motion. */}

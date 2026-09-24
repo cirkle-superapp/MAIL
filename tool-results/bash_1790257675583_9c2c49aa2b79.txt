@@ -1,0 +1,766 @@
+     1→/**
+     2→ * InsightsDashboard.tsx
+     3→ * -----------------------------------------------------------------------------
+     4→ * Operator-facing insights dialog — surfaces what's happening in the CIRKLE
+     5→ * search engine in real time. Triggered from the footer via an "Insights"
+     6→ * button next to the BrightData badge + IndexStatusBar.
+     7→ *
+     8→ * The dialog requires the operator token (`OPERATOR_TOKEN` constant in
+     9→ * `src/lib/operator-token.ts`). All `/api/insights` calls are made with
+    10→ * `Authorization: Bearer ${OPERATOR_TOKEN}`. If the token is wrong (401)
+    11→ * or missing, the dialog shows a banner "Unauthorized — set
+    12→ * BRIGHTDATA_OPERATOR_TOKEN env".
+    13→ *
+    14→ * Sections rendered:
+    15→ *   1. Top 10 queries (table: query + frequency)
+    16→ *   2. Top 10 domains (table: domain + docCount + avgQuality)
+    17→ *   3. Trending queries (top 5)
+    18→ *   4. BrightData budget (daily used/cap, monthly used/cap, last error)
+    19→ *   5. Index growth (count by day)
+    20→ *   6. Recent searches (last 10)
+    21→ *   7. Health check status (`/api/health`)
+    22→ */
+    23→
+    24→'use client'
+    25→
+    26→import * as React from 'react'
+    27→import {
+    28→  BarChart3,
+    29→  Loader2,
+    30→  RefreshCw,
+    31→  TrendingUp,
+    32→  Database,
+    33→  Globe2,
+    34→  Activity,
+    35→  ShieldAlert,
+    36→  AlertTriangle,
+    37→  CheckCircle2,
+    38→  XCircle,
+    39→} from 'lucide-react'
+    40→import { Button } from '@/components/ui/button'
+    41→import { Badge } from '@/components/ui/badge'
+    42→import { Progress } from '@/components/ui/progress'
+    43→import { Separator } from '@/components/ui/separator'
+    44→import {
+    45→  Dialog,
+    46→  DialogContent,
+    47→  DialogDescription,
+    48→  DialogHeader,
+    49→  DialogTitle,
+    50→  DialogTrigger,
+    51→} from '@/components/ui/dialog'
+    52→import {
+    53→  Table,
+    54→  TableBody,
+    55→  TableCell,
+    56→  TableHead,
+    57→  TableHeader,
+    58→  TableRow,
+    59→} from '@/components/ui/table'
+    60→import {
+    61→  Tabs,
+    62→  TabsContent,
+    63→  TabsList,
+    64→  TabsTrigger,
+    65→} from '@/components/ui/tabs'
+    66→import { OPERATOR_TOKEN } from '@/lib/operator-token'
+    67→import { cn } from '@/lib/utils'
+    68→
+    69→// --- Types (mirror the shapes returned by /api/insights + /api/health) ----
+    70→
+    71→interface TopQuery { query: string; frequency: number; lastUsedAt?: string }
+    72→interface TopDomain { domain: string; docCount: number; avgQuality: number }
+    73→interface TrendingQuery { query: string; frequency: number }
+    74→interface IndexGrowthPoint { date: string; docCount: number }
+    75→interface RecentSearch {
+    76→  query?: string
+    77→  timestamp?: string
+    78→  tookMs?: number
+    79→  totalFound?: number
+    80→  [k: string]: unknown
+    81→}
+    82→
+    83→interface InsightsResponse {
+    84→  range: string
+    85→  topQueries: TopQuery[]
+    86→  topDomains: TopDomain[]
+    87→  zeroResultQueries: { query: string; frequency: number }[]
+    88→  toolUsage: Record<string, number>
+    89→  trending: TrendingQuery[]
+    90→  indexGrowth: IndexGrowthPoint[]
+    91→  recent: RecentSearch[]
+    92→  summary: {
+    93→    totalUniqueQueries: number
+    94→    totalSearches: number
+    95→    avgLatencyMs: number
+    96→    p95LatencyMs: number
+    97→    zeroResultRate: number
+    98→    indexDocCount: number
+    99→  }
+   100→}
+   101→
+   102→interface BrightDataBudget {
+   103→  enabled: boolean
+   104→  budget: {
+   105→    daily: { used: number; cap: number; remaining: number }
+   106→    monthly: { used: number; cap: number; remaining: number }
+   107→  }
+   108→  disabledKinds: string[]
+   109→  totals: { successful: number; fallbacks: number }
+   110→  lastError: string | null
+   111→  zeroCostGuarantee: boolean
+   112→}
+   113→
+   114→interface HealthCheck {
+   115→  status: 'ok' | 'degraded' | 'down' | 'unknown'
+   116→  checks: Record<string, any>
+   117→  uptime: number
+   118→  version: string
+   119→  responseMs: number
+   120→  timestamp: string
+   121→}
+   122→
+   123→// --- Component -------------------------------------------------------------
+   124→
+   125→export function InsightsDashboard() {
+   126→  const [open, setOpen] = React.useState(false)
+   127→  const [loading, setLoading] = React.useState(false)
+   128→  const [error, setError] = React.useState<string | null>(null)
+   129→  const [unauthorized, setUnauthorized] = React.useState(false)
+   130→  const [insights, setInsights] = React.useState<InsightsResponse | null>(null)
+   131→  const [budget, setBudget] = React.useState<BrightDataBudget | null>(null)
+   132→  const ealth, setHealth] = React.useState<HealthCheck | null>(null)
+   133→
+   134→  const loadAll = React.useCallback(async () => {
+   135→    setLoading(true)
+   136→    setError(null)
+   137→    setUnauthorized(false)
+   138→
+   139→    // Fetch all three endpoints in parallel. The insights + brightdata status
+   140→    // calls are auth'd; the health call is public. Each is independent — a
+   141→    // failure of one doesn't block the others.
+   142→    const [insightsRes, budgetRes, healthRes] = await Promise.allSettled([
+   143→      fetch('/api/insights?range=day', {
+   144→        headers: {
+   145→          Authorization: `Bearer ${OPERATOR_TOKEN}`,
+   146→        },
+   147→      }),
+   148→      fetch('/api/brightdata/status', {
+   149→        headers: { 'XTransformPort': '3000' },
+   150→      }),
+   151→      fetch('/api/health', { cache: 'no-store' }),
+   152→    ])
+   153→
+   154→    // --- Insights ---
+   155→    if (insightsRes.status === 'fulfilled') {
+   156→      const r = insightsRes.value
+   157→      if (r.status === 401 || r.status === 403) {
+   158→        setUnauthorized(true)
+   159→      } else if (r.ok) {
+   160→        try {
+   161→          const data = (await r.json()) as InsightsResponse
+   162→          setInsights(data)
+   163→        } catch (e: any) {
+   164→          setError(`Failed to parse insights: ${e?.message ?? String(e)}`)
+   165→        }
+   166→      } else {
+   167→        const body = await r.json().catch(() => ({}))
+   168→        setError(`Insights failed: ${body?.error ?? r.status}`)
+   169→      }
+   170→    } else {
+   171→      setError(`Insights request failed: ${insightsRes.reason ?? 'network error'}`)
+   172→    }
+   173→
+   174→    // --- BrightData budget ---
+   175→    if (budgetRes.status === 'fulfilled' && budgetRes.value.ok) {
+   176→      try {
+   177→        setBudget((await budgetRes.value.json()) as BrightDataBudget)
+   178→      } catch {
+   179→        // silent
+   180→      }
+   181→    }
+   182→
+   183→    // --- Health ---
+   184→    if (healthRes.status === 'fulfilled' && healthRes.value.ok) {
+   185→      try {
+   186→        const h = (await healthRes.value.json()) as HealthCheck
+   187→        setHealth(h)
+   188→      } catch {
+   189→        // silent
+   190→      }
+   191→    }
+   192→
+   193→    setLoading(false)
+   194→  }, [])
+   195→
+   196→  // When the dialog opens, kick off the first load.
+   197→  React.useEffect(() => {
+   198→    if (open && !insights && !loading) {
+   199→      void loadAll()
+   200→    }
+   201→  }, [open, insights, loading, loadAll])
+   202→
+   203→  return (
+   204→    <Dialog
+   205→      open={open}
+   206→      onOpenChange={(o) => {
+   207→        setOpen(o)
+   208→        if (o) void loadAll()
+   209→      }}
+   210→    >
+   211→      <DialogTrigger asChild>
+   212→        <button
+   213→          type="button"
+   214→          aria-label="Open operator insights dashboard"
+   215→          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+   216→        >
+   217→          <BarChart3 className="size-3.5 text-primary" aria-hidden />
+   218→          <span>Insights</span>
+   219→        </button>
+   220→      </DialogTrigger>
+   221→      <DialogContent className="sm:max-w-3xl max-h-[88vh] overflow-y-auto">
+   222→        <DialogHeader>
+   223→          <DialogTitle className="flex items-center gap-2 text-base">
+   224→            <BarChart3 className="size-4 text-primary" aria-hidden />
+   225→            Operator insights
+   226→          </DialogTitle>
+   227→          <DialogDescription>
+   228→            Real-time view of what users are searching + how the engine is
+   229→            doing. Data from the last 24 hours.
+   230→          </DialogDescription>
+   231→        </DialogHeader>
+   232→
+   233→        {/* Unauthorized banner */}
+   234→        {unauthorized && (
+   235→          <div
+   236→            role="alert"
+   237→            className="flex items-start gap-2 rounded-md border border-rose-300 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"
+   238→          >
+   239→            <ShieldAlert className="size-4 shrink-0 mt-0.5" aria-hidden />
+   240→            <div>
+   241→              <div className="font-semibold">Unauthorized</div>
+   242→              <div className="mt-0.5">
+   243→                Set <code className="font-mono">BRIGHTDATA_OPERATOR_TOKEN</code> env
+   244→                var on the server, or update{' '}
+   245→                <code className="font-mono">src/lib/operator-token.ts</code> to
+   246→                match.
+   247→              </div>
+   248→            </div>
+   249→          </div>
+   250→        )}
+   251→
+   252→        {/* Error banner (non-auth) */}
+   253→        {error && !unauthorized && (
+   254→          <div
+   255→            role="alert"
+   256→            className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
+   257→          >
+   258→            <AlertTriangle className="size-4 shrink-0 mt-0.5" aria-hidden />
+   259→            <div className="flex-1">
+   260→              <div className="font-semibold">Could not load all data</div>
+   261→              <div className="mt-0.5">{error}</div>
+   262→            </div>
+   263→          </div>
+   264→        )}
+   265→
+   266→        {/* Toolbar */}
+   267→        <div className="flex items-center justify-between">
+   268→          <div className="text-xs text-muted-foreground">
+   269→            {insights
+   270→              ? `Range: ${insights.range} · ${insights.summary.totalSearches} searches`
+   271→              : 'Loading…'}
+   272→          </div>
+   273→          <Button
+   274→            type="button"
+   275→            variant="outline"
+   276→            size="sm"
+   277→            onClick={() => void loadAll()}
+   278→            disabled={loading}
+   279→            className="h-7 gap-1 text-xs"
+   280→          >
+   281→            {loading ? (
+   282→              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+   283→            ) : (
+   284→              <RefreshCw className="size-3.5" aria-hidden />
+   285→            )}
+   286→            Refresh
+   287→          </Button>
+   288→        </div>
+   289→
+   290→        {/* Summary stats */}
+   291→        {insights && (
+   292→          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+   293→            <SummaryCard
+   294→              label="Total searches"
+   295→              value={insights.summary.totalSearches.toString()}
+   296→            />
+   297→            <SummaryCard
+   298→              label="Unique queries"
+   299→              value={insights.summary.totalUniqueQueries.toString()}
+   300→            />
+   301→            <SummaryCard
+   302→              label="Avg latency"
+   303→              value={`${Math.round(insights.summary.avgLatencyMs)}ms`}
+   304→            />
+   305→            <SummaryCard
+   306→              label="Zero-result rate"
+   307→              value={`${(insights.summary.zeroResultRate * 100).toFixed(1)}%`}
+   308→            />
+   309→          </div>
+   310→        )}
+   311→
+   312→        {/* Tabbed sections */}
+   313→        <Tabs defaultValue="queries" className="mt-2">
+   314→          <TabsList className="grid w-full grid-cols-4">
+   315→            <TabsTrigger value="queries" className="text-xs">Queries</TabsTrigger>
+   316→            <TabsTrigger value="domains" className="text-xs">Domains</TabsTrigger>
+   317→            <TabsTrigger value="system" className="text-xs">System</TabsTrigger>
+   318→            <TabsTrigger value="recent" className="text-xs">Recent</TabsTrigger>
+   319→          </TabsList>
+   320→
+   321→          {/* Top queries + trending */}
+   322→          <TabsContent value="queries" className="mt-3 space-y-4">
+   323→            <section aria-label="Top queries">
+   324→              <SectionHeader icon={BarChart3} title="Top 10 queries" />
+   325→              <DataTable
+   326→                headers={['Query', 'Frequency']}
+   327→                rows={(insights?.topQueries ?? []).slice(0, 10).map((q) => [
+   328→                  <span
+   329→                    key="q"
+   330→                    className="truncate font-mono text-foreground"
+   331→                    title={q.query}
+   332→                  >
+   333→                    {q.query}
+   334→                  </span>,
+   335→                  <span key="f" className="font-mono">
+   336→                    {q.frequency}
+   337→                  </span>,
+   338→                ])}
+   339→                empty={insights ? 'No queries in the last 24h.' : undefined}
+   340→              />
+   341→            </section>
+   342→
+   343→            <section aria-label="Trending queries">
+   344→              <SectionHeader icon={TrendingUp} title="Trending (top 5)" />
+   345→              <DataTable
+   346→                headers={['Query', 'Frequency']}
+   347→                rows={(insights?.trending ?? []).slice(0, 5).map((q) => [
+   348→                  <span key="t" className="truncate font-mono text-foreground" title={q.query}>
+   349→                    {q.query}
+   350→                  </span>,
+   351→                  <span key="f" className="font-mono">
+   352→                    {q.frequency}
+   353→                  </span>,
+   354→                ])}
+   355→                empty={insights ? 'No trending queries.' : undefined}
+   356→              />
+   357→            </section>
+   358→
+   359→            {(insights?.zeroResultQueries?.length ?? 0) > 0 && (
+   360→              <section aria-label="Zero-result queries">
+   361→                <SectionHeader icon={AlertTriangle} title="Zero-result queries" />
+   362→                <DataTable
+   363→                  headers={['Query', 'Frequency']}
+   364→                  rows={insights!.zeroResultQueries.slice(0, 10).map((q) => [
+   365→                    <span
+   366→                      key="z"
+   367→                      className="truncate font-mono text-rose-600 dark:text-rose-400"
+   368→                      title={q.query}
+   369→                    >
+   370→                      {q.query}
+   371→                    </span>,
+   372→                    <span key="f" className="font-mono">
+   373→                      {q.frequency}
+   374→                    </span>,
+   375→                  ])}
+   376→                />
+   377→              </section>
+   378→            )}
+   379→          </TabsContent>
+   380→
+   381→          {/* Top domains + index growth */}
+   382→          <TabsContent value="domains" className="mt-3 space-y-4">
+   383→            <section aria-label="Top domains">
+   384→              <SectionHeader icon={Globe2} title="Top 10 domains" />
+   385→              <DataTable
+   386→                headers={['Domain', 'Docs', 'Avg quality']}
+   387→                rows={(insights?.topDomains ?? []).slice(0, 10).map((d) => [
+   388→                  <span key="d" className="truncate font-mono text-foreground" title={d.domain}>
+   389→                    {d.domain}
+   390→                  </span>,
+   391→                  <span key="c" className="font-mono">
+   392→                    {d.docCount}
+   393→                  </span>,
+   394→                  <span key="q" className="font-mono">
+   395→                    {d.avgQuality.toFixed(2)}
+   396→                  </span>,
+   397→                ])}
+   398→                empty={insights ? 'No domains indexed.' : undefined}
+   399→              />
+   400→            </section>
+   401→
+   402→            <section aria-label="Index growth">
+   403→              <SectionHeader icon={Database} title="Index growth (per day)" />
+   404→              {(insights?.indexGrowth?.length ?? 0) > 0 ? (
+   405→                <ul className="space-y-1 text-xs">
+   406→                  {insights!.indexGrowth.map((g) => (
+   407→                    <li
+   408→                      key={g.date}
+   409→                      className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 py-1.5"
+   410→                    >
+   411→                      <span className="font-mono text-muted-foreground">
+   412→                        {g.date}
+   413→                      </span>
+   414→                      <span className="font-mono font-medium text-foreground">
+   415→                        +{g.docCount} docs
+   416→                      </span>
+   417→                    </li>
+   418→                  ))}
+   419→                </ul>
+   420→              ) : (
+   421→                <EmptyRow text="No new documents crawled in this range." />
+   422→              )}
+   423→            </section>
+   424→          </TabsContent>
+   425→
+   426→          {/* BrightData budget + Health */}
+   427→          <TabsContent value="system" className="mt-3 space-y-4">
+   428→            <section aria-label="BrightData budget">
+   429→              <SectionHeader icon={Activity} title="BrightData budget" />
+   430→              {budget ? (
+   431→                <div className="space-y-3 rounded-md border border-border/60 p-3">
+   432→                  <div className="flex items-center justify-between">
+   433→                    <span className="text-xs text-muted-foreground">Status</span>
+   434→                    <Badge variant={budget.enabled ? 'default' : 'secondary'} className="text-[10px]">
+   435→                      {budget.enabled ? 'enabled' : 'free-tier'}
+   436→                    </Badge>
+   437→                  </div>
+   438→                  <BudgetBar
+   439→                    label="Daily"
+   440→                    used={budget.budget.daily.used}
+   441→                    cap={budget.budget.daily.cap}
+   442→                  />
+   443→                  <BudgetBar
+   444→                    label="Monthly"
+   445→                    used={budget.budget.monthly.used}
+   446→                    cap={budget.budget.monthly.cap}
+   447→                  />
+   448→                  <Separator />
+   449→                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+   450→                    <div className="flex items-center justify-between">
+   451→                      <span>Successful</span>
+   452→                      <span className="font-mono text-foreground">
+   453→                        {budget.totals.successful}
+   454→                      </span>
+   455→                    </div>
+   456→                    <div className="flex items-center justify-between">
+   457→                      <span>Fallbacks</span>
+   458→                      <span className="font-mono text-foreground">
+   459→                        {budget.totals.fallbacks}
+   460→                      </span>
+   461→                    </div>
+   462→                  </div>
+   463→                  {budget.disabledKinds.length > 0 && (
+   464→                    <div className="text-xs text-amber-600 dark:text-amber-400">
+   465→                      Disabled: {budget.disabledKinds.join(', ')}
+   466→                    </div>
+   467→                  )}
+   468→                  {budget.lastError && (
+   469→                    <div className="break-words text-xs text-rose-600 dark:text-rose-400">
+   470→                      Last error: {budget.lastError}
+   471→                    </div>
+   472→                  )}
+   473→                </div>
+   474→              ) : (
+   475→                <EmptyRow text="BrightData budget not available." />
+   476→              )}
+   477→            </section>
+   478→
+   479→            <section aria-label="Tool usage">
+   480→              <SectionHeader icon={BarChart3} title="Tool usage" />
+   481→              {insights && Object.keys(insights.toolUsage).length > 0 ? (
+   482→                <ul className="space-y-1 text-xs">
+   483→                  {Object.entries(insights.toolUsage).map(([k, v]) => (
+   484→                    <li
+   485→                      key={k}
+   486→                      className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-2 py-1.5"
+   487→                    >
+   488→                      <span className="font-mono text-muted-foreground capitalize">
+   489→                        {k}
+   490→                      </span>
+   491→                      <span className="font-mono font-medium text-foreground">
+   492→                        {v}
+   493→                      </span>
+   494→                    </li>
+   495→                  ))}
+   496→                </ul>
+   497→              ) : (
+   498→                <EmptyRow text="No tool usage in this range." />
+   499→              )}
+   500→            </section>
+   501→
+   502→            <section aria-label="Health check">
+   503→              <SectionHeader icon={ShieldAlert} title="Health check" />
+   504→              {health ? (
+   505→                <div className="space-y-2 rounded-md border border-border/60 p-3 text-xs">
+   506→                  <div className="flex items-center justify-between">
+   507→                    <span className="text-muted-foreground">Overall</span>
+   508→                    <HealthBadge status={health.status} />
+   509→                  </div>
+   510→                  <div className="flex items-center justify-between">
+   511→                    <span className="text-muted-foreground">Uptime</span>
+   512→                    <span className="font-mono text-foreground">
+   513→                      {formatUptime(health.uptime)}
+   514→                    </span>
+   515→                  </div>
+   516→                  <div className="flex items-center justify-between">
+   517→                    <span className="text-muted-foreground">Response</span>
+   518→                    <span className="font-mono text-foreground">
+   519→                      {health.responseMs}ms
+   520→                    </span>
+   521→                  </div>
+   522→                  <div className="flex items-center justify-between">
+   523→                    <span className="text-muted-foreground">Version</span>
+   524→                    <span className="font-mono text-foreground">
+   525→                      {health.version}
+   526→                    </span>
+   527→                  </div>
+   528→                  <Separator />
+   529→                  <div className="space-y-1">
+   530→                    {Object.entries(health.checks ?? {}).map(([k, v]: [string, any]) => (
+   531→                      <li
+   532→                        key={k}
+   533→                        className="flex items-center justify-between gap-2"
+   534→                      >
+   535→                        <span className="text-muted-foreground capitalize">
+   536→                          {k}
+   537→                        </span>
+   538→                        <span className="inline-flex items-center gap-1.5">
+   539→                          {v?.ok ? (
+   540→                            <CheckCircle2
+   541→                              className="size-3.5 text-emerald-600 dark:text-emerald-400"
+   542→                              aria-hidden
+   543→                            />
+   544→                          ) : (
+   545→                            <XCircle
+   546→                              className="size-3.5 text-rose-600 dark:text-rose-400"
+   547→                              aria-hidden
+   548→                            />
+   549→                          )}
+   550→                          <span className="font-mono text-foreground">
+   551→                            {v?.latencyMs != null
+   552→                              ? `${v.latencyMs}ms`
+   553→                              : v?.ok
+   554→                                ? 'ok'
+   555→                                : v?.error ?? 'fail'}
+   556→                          </span>
+   557→                        </span>
+   558→                      </li>
+   559→                    ))}
+   560→                  </div>
+   561→                </div>
+   562→              ) : (
+   563→                <EmptyRow text="Health check unavailable." />
+   564→              )}
+   565→            </section>
+   566→          </TabsContent>
+   567→
+   568→          {/* Recent searches */}
+   569→          <TabsContent value="recent" className="mt-3 space-y-2">
+   570→            <SectionHeader icon={Activity} title="Recent searches (last 10)" />
+   571→            {(insights?.recent?.length ?? 0) > 0 ? (
+   572→              <ul className="space-y-1">
+   573→                {insights!.recent.slice(0, 10).map((r, i) => (
+   574→                  <li
+   575→                    key={i}
+   576→                    className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 py-1.5 text-xs"
+   577→                  >
+   578→                    <span
+   579→                      className="truncate font-mono text-foreground"
+   580→                      title={r.query ?? ''}
+   581→                    >
+   582→                      {r.query ?? '—'}
+   583→                    </span>
+   584→                    <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+   585→                      {typeof r.tookMs === 'number' && (
+   586→                        <span className="font-mono">{r.tookMs}ms</span>
+   587→                      )}
+   588→                      {typeof r.totalFound === 'number' && (
+   589→                        <span className="font-mono">
+   590→                          {r.totalFound} found
+   591→                        </span>
+   592→                      )}
+   593→                      {r.timestamp && (
+   594→                        <span className="font-mono">
+   595→                          {new Date(r.timestamp).toLocaleTimeString()}
+   596→                        </span>
+   597→                      )}
+   598→                    </span>
+   599→                  </li>
+   600→                ))}
+   601→              </ul>
+   602→            ) : (
+   603→              <EmptyRow text="No recent searches." />
+   604→            )}
+   605→          </TabsContent>
+   606→        </Tabs>
+   607→      </DialogContent>
+   608→    </Dialog>
+   609→  )
+   610→}
+   611→
+   612→// --- Sub-components --------------------------------------------------------
+   613→
+   614→function SummaryCard({ label, value }: { label: string; value: string }) {
+   615→  return (
+   616→    <div className="rounded-md border border-border/60 bg-muted/30 p-2">
+   617→      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+   618→        {label}
+   619→      </div>
+   620→      <div className="mt-0.5 font-mono text-base font-semibold text-foreground">
+   621→        {value}
+   622→      </div>
+   623→    </div>
+   624→  )
+   625→}
+   626→
+   627→function SectionHeader({
+   628→  icon: Icon,
+   629→  title,
+   630→}: {
+   631→  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
+   632→  title: string
+   633→}) {
+   634→  return (
+   635→    <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   636→      <Icon className="size-3.5 text-primary" aria-hidden />
+   637→      {title}
+   638→    </h3>
+   639→  )
+   640→}
+   641→
+   642→function DataTable({
+   643→  headers,
+   644→  rows,
+   645→  empty,
+   646→}: {
+   647→  headers: string[]
+   648→  rows: React.ReactNode[][]
+   649→  empty?: string
+   650→}) {
+   651→  if (rows.length === 0) {
+   652→    return <EmptyRow text={empty ?? 'No data.'} />
+   653→  }
+   654→  return (
+   655→    <div className="rounded-md border border-border/60">
+   656→      <Table>
+   657→        <TableHeader>
+   658→          <TableRow>
+   659→            {headers.map((h) => (
+   660→              <TableHead key={h} className="h-8 text-[10px] uppercase tracking-wider">
+   661→                {h}
+   662→              </TableHead>
+   663→            ))}
+   664→          </TableRow>
+   665→        </TableHeader>
+   666→        <TableBody>
+   667→          {rows.map((row, i) => (
+   668→            <TableRow key={i}>
+   669→              {row.map((cell, j) => (
+   670→                <TableCell
+   671→                  key={j}
+   672→                  className={cn('py-1.5 text-xs', j === 0 && 'max-w-[60%]')}
+   673→                >
+   674→                  {cell}
+   675→                </TableCell>
+   676→              ))}
+   677→            </TableRow>
+   678→          ))}
+   679→        </TableBody>
+   680→      </Table>
+   681→    </div>
+   682→  )
+   683→}
+   684→
+   685→function EmptyRow({ text }: { text: string }) {
+   686→  return (
+   687→    <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+   688→      {text}
+   689→    </div>
+   690→  )
+   691→}
+   692→
+   693→function BudgetBar({
+   694→  label,
+   695→  used,
+   696→  cap,
+   697→}: {
+   698→  label: string
+   699→  used: number
+   700→  cap: number
+   701→}) {
+   702→  const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0
+   703→  return (
+   704→    <div>
+   705→      <div className="flex items-center justify-between text-xs">
+   706→        <span className="text-muted-foreground">{label}</span>
+   707→        <span className="font-mono text-foreground">
+   708→          {used} / {cap}
+   709→        </span>
+   710→      </div>
+   711→      <Progress
+   712→        value={pct}
+   713→        className="mt-1 h-1.5"
+   714→        aria-label={`${label} budget: ${used} of ${cap}`}
+   715→      />
+   716→    </div>
+   717→  )
+   718→}
+   719→
+   720→function HealthBadge({ status }: { status: HealthCheck['status'] }) {
+   721→  const cfg = {
+   722→    ok: {
+   723→      label: 'ok',
+   724→      color: 'text-emerald-600 dark:text-emerald-400',
+   725→      icon: CheckCircle2,
+   726→    },
+   727→    degraded: {
+   728→      label: 'degraded',
+   729→      color: 'text-amber-600 dark:text-amber-400',
+   730→      icon: AlertTriangle,
+   731→    },
+   732→    down: {
+   733→      label: 'down',
+   734→      color: 'text-rose-600 dark:text-rose-400',
+   735→      icon: XCircle,
+   736→    },
+   737→    unknown: {
+   738→      label: 'unknown',
+   739→      color: 'text-muted-foreground',
+   740→      icon: AlertTriangle,
+   741→    },
+   742→  } as const
+   743→  const c = cfg[status] ?? cfg.unknown
+   744→  const Icon = c.icon
+   745→  return (
+   746→    <span className={cn('inline-flex items-center gap-1.5 font-mono', c.color)}>
+   747→      <Icon className="size-3.5" aria-hidden />
+   748→      {c.label}
+   749→    </span>
+   750→  )
+   751→}
+   752→
+   753→function formatUptime(seconds: number): string {
+   754→  if (!Number.isFinite(seconds) || seconds < 0) return '—'
+   755→  const s = Math.floor(seconds)
+   756→  const d = Math.floor(s / 86400)
+   757→  const h = Math.floor((s % 86400) / 3600)
+   758→  const m = Math.floor((s % 3600) / 60)
+   759→  if (d > 0) return `${d}d ${h}h`
+   760→  if (h > 0) return `${h}h ${m}m`
+   761→  if (m > 0) return `${m}m`
+   762→  return `${s}s`
+   763→}
+   764→
+   765→export default InsightsDashboard
+   766→
