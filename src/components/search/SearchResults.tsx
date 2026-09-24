@@ -59,6 +59,7 @@ import { PageSummaryDialog } from './PageSummaryDialog'
 import { RelatedQuestions } from './RelatedQuestions'
 import { Pagination } from './Pagination'
 import { Footer } from './Footer'
+import { PWARegister } from '@/components/PWARegister'
 import { formatCount, formatRelativeTime } from './format'
 
 export function SearchResults() {
@@ -495,6 +496,9 @@ export function SearchResults() {
       )}
 
       <Footer />
+
+      {/* PWA service worker registration (renders nothing — side-effect only) */}
+      <PWARegister />
     </div>
   )
 }

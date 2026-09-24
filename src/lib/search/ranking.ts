@@ -68,6 +68,9 @@ export interface RankInput {
   docId: string
   tfidf: number
   matchedTerms: string[]
+  /** Optional: cosine similarity [0,1] from query embedding → doc embedding.
+   *  0 when embeddings unavailable (BM25-only mode). */
+  semanticBoost?: number
 }
 
 export interface RankedResult {
@@ -256,7 +259,9 @@ export async function rankCandidates(
     // We use max-normalization (divide by the maximum) so the top candidate
     // always gets lex=1.0, and other candidates get a fraction.
     const lex = (c.tfidf - minLex) / (maxLex - minLex + 0.0001)
-    const sem = semanticBoost(lex, c.matchedTerms) // now in [0, ~1]
+    // Out-of-box: use the precomputed embedding cosine similarity directly
+    // (already in [0,1] — set to 0 when embeddings module unavailable).
+    const sem = c.semanticBoost ?? semanticBoost(lex, c.matchedTerms)
     const q = doc.qualityScore
     const fr = freshnessScore(doc)
     const st = sourceTypeMatch(parsed, doc)
@@ -270,7 +275,10 @@ export async function rankCandidates(
     // NORMALIZED score — so if the top candidate has BM25=5.0 and another
     // candidate has BM25=0.1, the latter's normalized score is 0.02 (below
     // the 0.05 threshold) and gets dropped.
-    if (lex < RELEVANCE_THRESHOLD && mode !== 'IMAGES') {
+    // Exception: if the semantic boost is high (>0.4), keep the doc even if
+    // its lexical score is low — it's semantically relevant despite poor
+    // token match (e.g. "iphone" query → "Apple smartphone" doc).
+    if (lex < RELEVANCE_THRESHOLD && sem < 0.4 && mode !== 'IMAGES') {
       // For IMAGE mode, keep all candidates (image results are based on
       // og:image presence, not token relevance).
       continue

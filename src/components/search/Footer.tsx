@@ -21,6 +21,7 @@ import { ShieldCheck, ExternalLink } from 'lucide-react'
 import { CirkleLogo } from './CirkleLogo'
 import { IndexStatusBar } from './IndexStatusBar'
 import { BrightDataBadge } from './BrightDataBadge'
+import { InsightsDashboard } from './InsightsDashboard'
 
 const LINK_COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
   {
@@ -122,6 +123,7 @@ export function Footer() {
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <BrightDataBadge />
             <IndexStatusBar />
+            <InsightsDashboard />
           </div>
         </div>
       </div>

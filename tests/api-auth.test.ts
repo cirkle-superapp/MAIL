@@ -3,10 +3,13 @@
  * -----------------------------------------------------------------------------
  * Live tests for the BrightData operator endpoints (P0-1 security fix).
  *
- * Verifies that all three BrightData operator endpoints return 403 when no
- * `Authorization: Bearer <token>` header is provided. This is the secure
- * default: when `BRIGHTDATA_OPERATOR_TOKEN` env var is unset (as it is in
- * the dev sandbox), every BrightData endpoint refuses the call.
+ * Verifies that all three BrightData operator endpoints refuse calls
+ * without a valid `Authorization: Bearer <token>` header. The refusal is
+ * either 403 (when BRIGHTDATA_OPERATOR_TOKEN is unset — the secure default)
+ * or 401 (when the token IS set but the bearer header was wrong/missing).
+ *
+ * Either way, the call MUST NOT succeed (200) — that's the zero-cost
+ * guarantee. The exact status code depends on the env config.
  *
  * Pre-P0-1, these endpoints were unauthenticated — any visitor could POST
  * a URL and consume the BrightData budget (an SSRF amplifier + budget burn
@@ -15,8 +18,7 @@
  *
  * This is a LIVE test — requires the dev server running on
  * http://localhost:3000. Auto-skipped in CI via `ctx.skip()` inside each
- * test (we can't use `it.skipIf()` because the server-up probe is async
- * and runs in `beforeAll`).
+ * test.
  * -----------------------------------------------------------------------------
  */
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -46,33 +48,31 @@ describe('BrightData operator endpoints (P0-1 — auth required)', () => {
         body: JSON.stringify({ url: 'https://example.com' }),
         signal: AbortSignal.timeout(5000),
       })
-      // 403 is the secure default (operator token unset) — 401 would mean
-      // the token is configured but the bearer header was wrong. Either
-      // way, the call must NOT succeed (200). The audit fix specifies 403
-      // for the no-token-configured case, which is what the dev sandbox
-      // has.
-      expect(r.status).toBe(403)
+      // Refusal code: 403 (token unset — secure default) OR 401 (token set
+      // but no/wrong bearer header). Either way, NOT 200.
+      expect([401, 403]).toContain(r.status)
       const data = await r.json().catch(() => ({}))
-      expect(data.error).toBe('brightdata_operator_disabled')
+      // Either 'brightdata_operator_disabled' (403) OR 'unauthorized' (401).
+      expect(['brightdata_operator_disabled', 'unauthorized']).toContain(data.error)
     },
   )
 
   it(
-    'GET /api/brightdata/snapshot/sd_test123 returns 403 without auth',
+    'GET /api/brightdata/snapshot/sd_test123 returns 401/403 without auth',
     async (ctx) => {
       if (!serverUp) return ctx.skip()
       const r = await fetch(
         `${DEV_URL}/api/brightdata/snapshot/sd_test123`,
         { signal: AbortSignal.timeout(5000) },
       )
-      expect(r.status).toBe(403)
+      expect([401, 403]).toContain(r.status)
       const data = await r.json().catch(() => ({}))
-      expect(data.error).toBe('brightdata_operator_disabled')
+      expect(['brightdata_operator_disabled', 'unauthorized']).toContain(data.error)
     },
   )
 
   it(
-    'POST /api/brightdata/datasets returns 403 without auth',
+    'POST /api/brightdata/datasets returns 401/403 without auth',
     async (ctx) => {
       if (!serverUp) return ctx.skip()
       const r = await fetch(`${DEV_URL}/api/brightdata/datasets`, {
@@ -81,9 +81,9 @@ describe('BrightData operator endpoints (P0-1 — auth required)', () => {
         body: JSON.stringify({ datasetId: 'gd_test_dataset' }),
         signal: AbortSignal.timeout(5000),
       })
-      expect(r.status).toBe(403)
+      expect([401, 403]).toContain(r.status)
       const data = await r.json().catch(() => ({}))
-      expect(data.error).toBe('brightdata_operator_disabled')
+      expect(['brightdata_operator_disabled', 'unauthorized']).toContain(data.error)
     },
   )
 

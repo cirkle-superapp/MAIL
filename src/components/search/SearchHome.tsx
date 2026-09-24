@@ -33,6 +33,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { CommandPalette } from './CommandPalette'
 import { TrendingSearches } from './TrendingSearches'
 import { Footer } from './Footer'
+import { PWARegister } from '@/components/PWARegister'
 import { cn } from '@/lib/utils'
 
 /** The search-engine pipeline stages, shown as a horizontal strip. */
@@ -321,6 +322,9 @@ export function SearchHome() {
 
       {/* Command palette overlay (toggled via Cmd/Ctrl+K) */}
       <CommandPalette />
+
+      {/* PWA service worker registration (renders nothing — side-effect only) */}
+      <PWARegister />
     </div>
   )
 }

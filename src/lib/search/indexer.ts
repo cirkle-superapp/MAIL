@@ -64,6 +64,8 @@ interface CachedDoc {
   wordCount: number
   // P3-6: post-stopword-removal token count — used for accurate BM25 docLen.
   indexedTokenCount?: number
+  // Semantic embedding (Float32 buffer — null if not computed).
+  embedding?: Buffer | null
   snippet: string
   author: string | null
   publisher: string | null
@@ -107,6 +109,8 @@ async function loadIndexIfNeeded(force = false): Promise<CachedDoc[]> {
         author: true, publisher: true, ogImage: true,
         // P3-6: needed for accurate BM25 docLen.
         indexedTokenCount: true,
+        // Semantic embeddings (optional — null when transformers.js unavailable).
+        embedding: true,
       },
     })
     loadedDocs = rows
@@ -208,6 +212,21 @@ export async function indexDocument(
   postings.sort((a, b) => b.f - a.f)
 
   const json = JSON.stringify(postings)
+  // Semantic embedding (transformers.js, in-process, ~30ms).
+  // Failure is non-fatal — the doc is still indexed for BM25.
+  let embeddingBuf: Buffer | null = null
+  try {
+    const { embed, encodeEmbedding } = await import('../embeddings')
+    // Embed the title + first ~500 chars of body — captures the doc's
+    // topical "signature" cheaply. The full body would be more accurate
+    // but ~5x slower + most semantic signal is in the first paragraph.
+    const embedInput = `${title} ${(contentText || '').slice(0, 500)}`
+    const emb = await embed(embedInput)
+    if (emb) embeddingBuf = encodeEmbedding(emb)
+  } catch {
+    // embeddings module unavailable — fall back to BM25-only
+  }
+
   await db.document.update({
     where: { id: docId },
     data: {
@@ -216,6 +235,9 @@ export async function indexDocument(
       // BM25 docLen. wordCount includes stopwords (over-counts); this
       // field is the actual indexed-token count (under-counts stopwords).
       indexedTokenCount: stemmed.length,
+      // Semantic embedding for cosine-similarity ranking (optional —
+      // null if the embeddings module failed to load).
+      ...(embeddingBuf ? { embedding: embeddingBuf } : {}),
     },
   })
 
@@ -410,6 +432,53 @@ export async function queryIndex(
 
   hits.sort((a, b) => b.tfidf - a.tfidf)
   return hits.slice(0, 200)
+}
+
+/**
+ * Semantic search — compute the query embedding, then return top-N docs by
+ * cosine similarity with the query.
+ *
+ * Used as a ranking BOOST (not a replacement for BM25). The caller merges
+ * the semantic hits with the BM25 hits — if a doc appears in both, the
+ * semantic score boosts its overall rank.
+ *
+ * Returns [] if:
+ *   - The embedding module failed to load (transformers.js unavailable)
+ *   - The query embedding failed
+ *   - No documents have embeddings yet (e.g. before the first reindex)
+ */
+export async function semanticSearch(
+  query: string,
+  opts: { limit?: number } = {},
+): Promise<{ docId: string; semanticScore: number }[]> {
+  const limit = opts.limit ?? 50
+  try {
+    const { embed, decodeEmbedding, cosineSim, isEmbeddingAvailable } =
+      await import('../embeddings')
+    if (!(await isEmbeddingAvailable())) return []
+
+    const queryEmb = await embed(query)
+    if (!queryEmb) return []
+
+    const docs = await getAllDocsMap()
+    const results: { docId: string; semanticScore: number }[] = []
+    for (const doc of docs.values()) {
+      const buf = doc.embedding
+      if (!buf) continue
+      const docEmb = decodeEmbedding(buf as unknown as Buffer)
+      if (!docEmb) continue
+      const sim = cosineSim(queryEmb, docEmb)
+      // Threshold — below 0.15 the docs are unrelated.
+      if (sim > 0.15) {
+        results.push({ docId: doc.id, semanticScore: sim })
+      }
+    }
+    results.sort((a, b) => b.semanticScore - a.semanticScore)
+    return results.slice(0, limit)
+  } catch {
+    // Embeddings module unavailable — return empty (BM25-only).
+    return []
+  }
 }
 
 /**

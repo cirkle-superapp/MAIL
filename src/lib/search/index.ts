@@ -675,6 +675,24 @@ export async function search(
     })
     .filter((x): x is { doc: DocRow; hit: typeof hits[number] } => x !== null)
 
+  // --- Semantic search boost (out-of-box idea) ---
+  // Compute the query embedding + look up the top-N most similar docs by
+  // cosine similarity. Any doc that appears in BOTH the BM25 candidates AND
+  // the semantic top-N gets a relevance boost. This catches the case where
+  // BM25 misses a doc because the query uses different wording (e.g. the
+  // query is "iphone" but the doc says "Apple smartphone" — semantically
+  // close, lexically different).
+  const semanticBoostByDocId = new Map<string, number>()
+  try {
+    const { semanticSearch } = await import('./indexer')
+    const semanticHits = await semanticSearch(query, { limit: 30 })
+    for (const sh of semanticHits) {
+      semanticBoostByDocId.set(sh.docId, sh.semanticScore)
+    }
+  } catch {
+    // semanticSearch unavailable — non-critical, BM25-only ranking proceeds.
+  }
+
   // Build the dbDocs map expected by rankCandidates
   const dbDocsForRank = new Map<string, any>()
   for (const c of candidates) {
@@ -685,6 +703,8 @@ export async function search(
     docId: c.doc.id,
     tfidf: c.hit.tfidf,
     matchedTerms: c.hit.matchedTerms,
+    // Out-of-box: semantic boost from cosine similarity (0 if no embedding).
+    semanticBoost: semanticBoostByDocId.get(c.doc.id) ?? 0,
   }))
 
   // RESEARCH mode: enlarge candidate pool — already limited by queryIndex

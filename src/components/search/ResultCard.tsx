@@ -22,6 +22,9 @@
  *  - Relevance score shown as a tiny progress bar in the corner (visual only,
  *    labeled Low/Medium/High — per §15 we never expose the actual numeric
  *    weight).
+ *  - Feedback row at the bottom-right: 👍 / 👎 / Report. Submits to
+ *    /api/feedback, persists in localStorage per (query, docId) so the user
+ *    can't vote twice on the same pair. See <ResultFeedback>.
  */
 
 'use client'
@@ -67,6 +70,7 @@ import {
   matchStrength,
 } from './format'
 import { WhyThisResult } from './WhyThisResult'
+import { ResultFeedback } from './ResultFeedback'
 import type { SearchResult } from './types'
 
 export interface ResultCardProps {
@@ -342,6 +346,15 @@ export function ResultCard({ result, rank, onSummary }: ResultCardProps) {
           </CollapsibleContent>
         </Collapsible>
       </div>
+
+      {/* Feedback row — 👍 / 👎 / Report. Always rendered (the buttons
+          short-circuit + persist the user's vote in localStorage so the
+          user can't vote twice on the same (query, docId) pair). */}
+      <ResultFeedback
+        query={query}
+        docId={result.id}
+        docUrl={result.url}
+      />
     </article>
   )
 }

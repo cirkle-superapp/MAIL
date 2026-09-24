@@ -36,8 +36,10 @@ export const metadata: Metadata = {
     "دواير",
   ],
   authors: [{ name: "CIRKLE" }],
+  manifest: "/manifest.json",
   icons: {
     icon: "/cirkle-favicon.svg",
+    apple: "/cirkle-logo.svg",
   },
   openGraph: {
     title: "CIRKLE",
