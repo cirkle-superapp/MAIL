@@ -342,7 +342,7 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
   return (
     <div className="relative flex h-full flex-col bg-background">
       {/* List header / toolbar */}
-      <div className="glass animate-spring-in flex h-14 items-center gap-2 border-b border-border/40 px-3 sm:px-4">
+      <div className="glass animate-spring-in flex h-12 items-center gap-2 border-b border-border/40 px-3 sm:px-4">
         {selected.size > 0 ? (
           <BulkToolbar
             count={selected.size}
@@ -403,9 +403,9 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
             >
               <meta.icon className="h-4 w-4" />
             </div>
-            <h2 className="font-display text-base font-medium text-foreground">{title}</h2>
+            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
             {emails.length > 0 && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {emails.length} {emails.length === 1 ? "message" : "messages"}
               </span>
             )}
@@ -413,7 +413,7 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
               <Button
                 variant="ghost"
                 size="sm"
-                className="btn-premium ml-2 h-8 gap-1 rounded-full text-xs text-muted-foreground hover:text-destructive"
+                className="btn-premium ml-2 h-7 gap-1 rounded-full text-xs text-muted-foreground hover:text-destructive"
                 onClick={() => setEmptyConfirmOpen(true)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -457,7 +457,7 @@ export function EmailList({ onOpenEmail }: { onOpenEmail: (id: string) => void }
 
       {/* Inbox category tabs */}
       {showTabs && (
-        <div className="glass flex flex-shrink-0 items-center gap-1 overflow-x-auto border-b border-border/40 px-2 py-2">
+        <div className="glass flex flex-shrink-0 items-center gap-1 overflow-x-auto border-b border-border/40 px-2 py-1.5">
           <InboxTabButton
             active={inboxTab === "ALL"}
             label="All"
@@ -585,17 +585,17 @@ function InboxTabButton({
       className={cn(
         "flex flex-shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-all duration-200",
         active
-          ? "bg-primary/10 font-semibold text-primary shadow-soft"
-          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          ? "bg-foreground/10 font-semibold text-foreground shadow-soft"
+          : "text-muted-foreground hover:text-foreground"
       )}
     >
-      {dot && <span className={cn("h-2 w-2 rounded-full", dot)} />}
+      {dot && <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />}
       <span>{label}</span>
       {count > 0 && (
         <span
           className={cn(
             "text-[11px]",
-            active ? "text-primary/70" : "text-muted-foreground"
+            active ? "text-foreground/60" : "text-muted-foreground"
           )}
         >
           {count}
@@ -640,15 +640,15 @@ function DateGroupedEmailList({
     <div>
       {BUCKET_ORDER.filter((b) => groups.has(b)).map((bucket) => (
         <section key={bucket}>
-          <div className="glass-strong sticky top-0 z-10 flex h-9 items-center gap-1.5 border-b border-border/40 px-4">
+          <div className="sticky top-0 z-10 flex h-7 items-center gap-1.5 border-b border-border/40 bg-muted/30 px-4 backdrop-blur-sm">
             <span
-              className="h-3 w-1 rounded-full bg-gradient-gold"
+              className="h-2.5 w-1 rounded-full bg-gradient-gold"
               aria-hidden="true"
             />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/70">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-foreground/70">
               {bucket}
             </span>
-            <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
               {groups.get(bucket)!.length}
             </span>
           </div>
@@ -703,17 +703,17 @@ function BulkToolbar({
 }) {
   return (
     <div className="flex w-full animate-spring-in items-center gap-1">
-      <span className="font-display text-sm font-semibold text-foreground">
+      <span className="text-xs font-medium text-foreground">
         {count} selected
       </span>
-      <div className="mx-1 h-5 w-px bg-border/60" />
+      <div className="mx-1 h-4 w-px bg-border/60" />
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="btn-premium h-8 w-8 rounded-full"
+              className="btn-premium h-7 w-7 rounded-full"
               onClick={onArchive}
             >
               <Archive className="h-4 w-4" />
@@ -722,11 +722,12 @@ function BulkToolbar({
           <TooltipContent>Archive</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <SnoozeMenu onSnooze={onSnooze} onUnsnooze={onUnsnooze} />
+      <SnoozeMenu onSnooze={onSnooze} onUnsnooze={onUnsnooze} className="btn-premium h-7 w-7 rounded-full p-0 gap-0" />
       <LabelMenu
         activeLabels={activeLabels}
         onToggle={onToggleLabel}
         size="sm"
+        className="btn-premium h-7 w-7 rounded-full p-0 gap-0"
       />
       <TooltipProvider delayDuration={300}>
         <Tooltip>
@@ -734,7 +735,7 @@ function BulkToolbar({
             <Button
               variant="ghost"
               size="icon"
-              className="btn-premium h-8 w-8 rounded-full"
+              className="btn-premium h-7 w-7 rounded-full"
               onClick={onMarkRead}
             >
               <MailOpen className="h-4 w-4" />
@@ -749,7 +750,7 @@ function BulkToolbar({
             <Button
               variant="ghost"
               size="icon"
-              className="btn-premium h-8 w-8 rounded-full"
+              className="btn-premium h-7 w-7 rounded-full"
               onClick={onMarkUnread}
             >
               <Mail className="h-4 w-4" />
@@ -758,14 +759,14 @@ function BulkToolbar({
           <TooltipContent>Mark as unread</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <div className="mx-1 h-5 w-px bg-border/60" />
+      <div className="mx-1 h-4 w-px bg-border/60" />
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="btn-premium h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
+              className="btn-premium h-7 w-7 rounded-full text-muted-foreground hover:text-destructive"
               onClick={onDelete}
             >
               <Trash2 className="h-4 w-4" />
@@ -779,7 +780,7 @@ function BulkToolbar({
       <Button
         variant="ghost"
         size="sm"
-        className="ml-auto h-8 text-xs"
+        className="ml-auto h-7 text-xs"
         onClick={onClear}
       >
         Clear

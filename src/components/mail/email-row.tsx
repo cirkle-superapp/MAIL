@@ -79,8 +79,8 @@ export function EmailRow({
         }
       }}
       className={cn(
-        "group relative flex cursor-pointer items-start gap-2.5 px-3 transition-all duration-200 sm:px-5",
-        density === "compact" ? "py-1.5" : "py-3",
+        "group relative flex cursor-pointer items-start gap-2.5 px-3 transition-all duration-200 sm:px-4",
+        density === "compact" ? "py-1.5" : "py-2.5",
         active
           ? "bg-primary/10 shadow-soft shadow-[inset_3px_0_0_0_hsl(var(--primary))]"
           : selected
@@ -92,7 +92,7 @@ export function EmailRow({
         staggerClass
       )}
     >
-      <div className="flex items-center gap-1.5 pt-1">
+      <div className="flex items-center gap-1 pt-1">
         <Checkbox
           checked={selected}
           onCheckedChange={onSelect}
@@ -123,7 +123,7 @@ export function EmailRow({
           <span
             className={cn(
               "truncate text-sm",
-              unread ? "font-semibold text-foreground" : "font-normal text-foreground/80"
+              unread ? "font-semibold text-foreground" : "font-normal text-foreground/70"
             )}
           >
             {email.fromName}
@@ -164,7 +164,7 @@ export function EmailRow({
 
           {/* Hover action buttons — glass overlay on hover */}
           {hasHoverActions && (
-            <div className="glass-strong absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-full px-1.5 py-1 opacity-0 shadow-premium transition-all duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+            <div className="glass-strong absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-full px-1 py-0.5 opacity-0 shadow-premium transition-all duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
               {onArchive && (
                 <RowActionBtn label="Archive" onClick={onArchive}>
                   <Archive className="h-3.5 w-3.5" />
@@ -209,7 +209,7 @@ export function EmailRow({
           {email.intent && INTENT_LABELS[email.intent as Intent] ? (
             <span
               className={cn(
-                "flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium shadow-soft",
+                "flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium shadow-soft",
                 INTENT_COLORS[email.intent as Intent] ?? INTENT_COLORS.FYI
               )}
             >
@@ -230,11 +230,11 @@ export function EmailRow({
         </div>
         {labels.length > 0 && (
           <div className="mt-1 flex flex-wrap items-center gap-1">
-            {labels.map((label) => (
+            {labels.slice(0, 2).map((label) => (
               <span
                 key={label}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shadow-soft",
+                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium shadow-soft",
                   labelChipClass(label)
                 )}
               >
@@ -247,6 +247,11 @@ export function EmailRow({
                 {label}
               </span>
             ))}
+            {labels.length > 2 && (
+              <span className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                +{labels.length - 2}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -273,7 +278,7 @@ function RowActionBtn({
         onClick();
       }}
       className={cn(
-        "btn-premium flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-all duration-200 hover:scale-110 hover:bg-muted hover:text-foreground",
+        "btn-premium flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-all duration-200 hover:scale-110 hover:bg-muted hover:text-foreground",
         danger && "hover:text-destructive"
       )}
       aria-label={label}

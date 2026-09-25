@@ -100,19 +100,19 @@ export function CommandCenterView() {
 
   return (
     <div className="aurora-bg aurora-drift relative h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
         {/* ═══ Hero ═══ */}
-        <div className="mb-10 flex items-center gap-5 animate-spring-in">
+        <div className="mb-6 flex items-center gap-4 animate-spring-in">
           {/* Animated logo with glow */}
           <div className="relative flex-shrink-0">
             <div className="absolute inset-0 animate-pulse-glow rounded-full" />
-            <CirkleLogo size={64} animated />
+            <CirkleLogo size={44} animated />
           </div>
           <div className="flex-1">
-            <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            <h1 className="font-display text-xl font-medium tracking-tight text-foreground sm:text-2xl">
               {greetingText}
             </h1>
-            <p className="text-sm text-muted-foreground">{todayText}</p>
+            <p className="text-xs font-medium text-muted-foreground">{todayText}</p>
           </div>
           <div className="hidden items-center gap-2 sm:flex">
             <Button
@@ -144,16 +144,16 @@ export function CommandCenterView() {
         </div>
 
         {/* ═══ Daily Briefing (AI) — glass card ═══ */}
-        <div className="mb-8 animate-fade-up stagger-1">
+        <div className="mb-6 animate-fade-up stagger-1">
           {isLoading ? (
-            <Skeleton className="h-44 w-full rounded-2xl" />
+            <Skeleton className="h-36 w-full rounded-xl" />
           ) : (
             <BriefingCard briefing={briefing} onFirstAction={() => setFolder("REPLY")} />
           )}
         </div>
 
         {/* ═══ Summary cards grid — premium cards with hover glow ═══ */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {SUMMARY_CARDS.map((card, i) => {
             const Icon = card.icon;
             const count = counts[card.countKey] ?? 0;
@@ -162,20 +162,20 @@ export function CommandCenterView() {
                 key={card.key}
                 onClick={() => setFolder(card.key)}
                 className={cn(
-                  "group animate-spring-in flex items-center gap-3 rounded-2xl border bg-gradient-to-br p-5 text-left shadow-premium transition-all duration-300 hover:-translate-y-1",
+                  "group animate-spring-in flex items-center gap-3 rounded-xl border bg-gradient-to-br p-4 text-left shadow-premium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-float",
                   card.accent,
                   card.glow,
                   `stagger-${(i % 6) + 1}`
                 )}
               >
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-background/70 shadow-soft transition-transform duration-300 group-hover:scale-110">
-                  <Icon className="h-6 w-6 text-foreground" />
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-background/80 shadow-soft transition-transform duration-300 group-hover:scale-110">
+                  <Icon className="h-5 w-5 text-foreground" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="font-display text-3xl font-semibold text-foreground transition-colors">{count}</div>
-                  <div className="truncate text-xs text-muted-foreground">{card.label}</div>
+                  <div className="font-display text-2xl font-semibold leading-none text-foreground transition-colors">{count}</div>
+                  <div className="text-[11px] font-medium leading-tight text-muted-foreground mt-1">{card.label}</div>
                 </div>
-                <ArrowRight className="h-4 w-4 flex-shrink-0 text-muted-foreground/50 transition-all duration-300 group-hover:translate-x-1 group-hover:text-foreground" />
+                <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/40 transition-all duration-300 group-hover:translate-x-1 group-hover:text-foreground" />
               </button>
             );
           })}
@@ -231,27 +231,27 @@ function BriefingCard({
   const sevIcon = (sev: string) =>
     sev === "high" ? AlertTriangle : sev === "medium" ? Clock : CheckCircle2;
   return (
-    <div className="glass relative overflow-hidden rounded-2xl border border-primary/20 p-6 shadow-glass">
+    <div className="glass relative overflow-hidden rounded-xl border border-primary/20 p-5 shadow-glass">
       {/* Subtle gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none" />
       <div className="relative">
-        <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-primary">
+        <div className="mb-2.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-primary">
           <Sparkles className="h-3.5 w-3.5" /> Daily Briefing
           <span className="ml-auto text-[10px] text-muted-foreground">
             {Math.round((briefing.confidence ?? 0.5) * 100)}% confidence
           </span>
         </div>
-        <p className="font-display text-lg font-medium leading-snug text-foreground sm:text-xl">{briefing.headline}</p>
+        <p className="font-display text-base font-medium leading-snug text-foreground sm:text-lg">{briefing.headline}</p>
         {briefing.highlights && briefing.highlights.length > 0 ? (
-          <ul className="mt-4 space-y-2.5">
+          <ul className="mt-3 space-y-2">
             {briefing.highlights.map((h, i) => {
               const Icon = sevIcon(h.severity);
               return (
-                <li key={i} className={cn("animate-fade-up rounded-xl border p-3", SEVERITY_STYLE[h.severity ?? "low"], `stagger-${i + 1}`)}>
-                  <div className="flex items-start gap-2.5">
-                    <Icon className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                <li key={i} className={cn("animate-fade-up rounded-lg border p-2.5", SEVERITY_STYLE[h.severity ?? "low"], `stagger-${i + 1}`)}>
+                  <div className="flex items-start gap-2">
+                    <Icon className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <p className="text-sm text-foreground/90">{h.text}</p>
+                      <p className="text-[13px] leading-snug text-foreground/90">{h.text}</p>
                       {h.source && (
                         <p className="mt-1 border-l-2 border-border pl-2 text-[11px] italic text-muted-foreground">
                           “{h.source}”
@@ -265,7 +265,7 @@ function BriefingCard({
           </ul>
         ) : null}
         {briefing.suggestedFirstAction ? (
-          <div className="mt-4">
+          <div className="mt-3">
             <Button
               size="sm"
               className="btn-premium gap-1.5 bg-primary text-primary-foreground shadow-premium hover:bg-primary/90"
