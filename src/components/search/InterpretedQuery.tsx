@@ -1,8 +1,17 @@
 /**
- * InterpretedQuery.tsx
+ * InterpretedQuery.tsx  —  @deprecated (Task 80)
  * -----------------------------------------------------------------------------
  * Renders the small "Interpreted query" panel under the search box on the
  * results page.
+ *
+ * @deprecated This component was REPLACED by `QueryDna.tsx` in Task 80 (creative
+ * search). QueryDna is the new algorithmic introspection card — it visualizes
+ * tokens (colored by POS), intent badge, entity icons, languages, with a
+ * spring entrance + glass background. InterpretedQuery is kept as a fallback
+ * in case QueryDna has issues — but SearchResults.tsx now renders QueryDna.
+ *
+ * To restore: replace `<QueryDna />` with `<InterpretedQuery />` in
+ * SearchResults.tsx (it's still a working component).
  *
  * The backend's `SearchResponse.interpretedQuery` is currently a string
  * (see `src/lib/search/index.ts` — assembled from tokens + phrases). We
