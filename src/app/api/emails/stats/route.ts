@@ -3,7 +3,9 @@ import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-// Get counts per folder, plus starred/important counts, plus label counts
+// Get counts per folder, plus starred/important counts, plus label counts,
+// plus the top (most recent) item per Communication OS view — so the Command
+// Center summary cards can show context (sender + subject), not just counts.
 export async function GET() {
   const now = new Date();
   const all = await db.email.findMany({
@@ -17,9 +19,13 @@ export async function GET() {
       snoozedUntil: true,
       toEmails: true,
       fromEmail: true,
+      fromName: true,
+      subject: true,
       intent: true,
       body: true,
+      date: true,
     },
+    orderBy: { date: "desc" },
   });
 
   const counts: Record<string, number> = {
@@ -50,6 +56,19 @@ export async function GET() {
     ARCHIVE: 0,
   };
   const labelCounts: Record<string, number> = {};
+  // Top (most recent) item per smart view — for Command Center card previews
+  const topItems: Record<string, { id: string; subject: string; fromName: string } | null> = {
+    NOW: null,
+    REPLY: null,
+    WAITING: null,
+    RECEIPTS: null,
+    SUBSCRIPTIONS: null,
+  };
+  const setTop = (key: string, e: typeof all[number]) => {
+    if (!topItems[key] && e.subject) {
+      topItems[key] = { id: e.id, subject: e.subject, fromName: e.fromName };
+    }
+  };
 
   for (const e of all) {
     const isSnoozed = !!e.snoozedUntil && e.snoozedUntil > now;
@@ -81,6 +100,7 @@ export async function GET() {
           ))
       ) {
         counts.NOW += 1;
+        setTop("NOW", e);
       }
       // REPLY: requires-reply intent (not sent by user)
       if (
@@ -89,6 +109,7 @@ export async function GET() {
         ["INBOX", "ARCHIVE"].includes(e.folder)
       ) {
         counts.REPLY += 1;
+        setTop("REPLY", e);
       }
       // WAITING: user sent + contains a question/commitment
       if (
@@ -97,13 +118,17 @@ export async function GET() {
         (e.intent === "COMMITMENT" || (e.body ?? "").includes("?"))
       ) {
         counts.WAITING += 1;
+        setTop("WAITING", e);
       }
       // RECEIPTS: invoice/receipt/order/shipment intent OR Finance label
       if (
         ["INVOICE", "RECEIPT", "ORDER", "SHIPMENT"].includes(e.intent ?? "") ||
         labels.includes("finance")
       ) {
-        if (["INBOX", "SENT", "ARCHIVE"].includes(e.folder)) counts.RECEIPTS += 1;
+        if (["INBOX", "SENT", "ARCHIVE"].includes(e.folder)) {
+          counts.RECEIPTS += 1;
+          setTop("RECEIPTS", e);
+        }
       }
       // SUBSCRIPTIONS: newsletter/promotion intent OR Newsletter label
       if (
@@ -112,6 +137,7 @@ export async function GET() {
         ["INBOX", "ARCHIVE"].includes(e.folder)
       ) {
         counts.SUBSCRIPTIONS += 1;
+        setTop("SUBSCRIPTIONS", e);
       }
     }
 
@@ -122,5 +148,5 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ counts, unreadByFolder, labelCounts });
+  return NextResponse.json({ counts, unreadByFolder, labelCounts, topItems });
 }

@@ -203,6 +203,7 @@ export interface EmailStats {
   counts: Record<string, number>;
   unreadByFolder: Record<string, number>;
   labelCounts: Record<string, number>;
+  topItems?: Record<string, { id: string; subject: string; fromName: string } | null>;
 }
 
 export function useEmailStats() {

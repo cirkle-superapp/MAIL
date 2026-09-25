@@ -71,6 +71,7 @@ export function CommandCenterView() {
   const stats = useEmailStats();
   const invalidate = useInvalidateMail();
   const counts = stats.data?.counts ?? {};
+  const topItems = stats.data?.topItems ?? {};
 
   const { data: briefing, isLoading } = useQuery({
     queryKey: ["briefing"],
@@ -157,25 +158,34 @@ export function CommandCenterView() {
           {SUMMARY_CARDS.map((card, i) => {
             const Icon = card.icon;
             const count = counts[card.countKey] ?? 0;
+            const top = topItems?.[card.countKey] ?? null;
             return (
               <button
                 key={card.key}
                 onClick={() => setFolder(card.key)}
                 className={cn(
-                  "group animate-spring-in flex items-center gap-3 rounded-xl border bg-gradient-to-br p-4 text-left shadow-premium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-float",
+                  "group animate-spring-in flex flex-col gap-2 rounded-xl border bg-gradient-to-br p-4 text-left shadow-premium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-float",
                   card.accent,
                   card.glow,
                   `stagger-${(i % 6) + 1}`
                 )}
               >
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-background/80 shadow-soft transition-transform duration-300 group-hover:scale-110">
-                  <Icon className="h-5 w-5 text-foreground" />
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-background/80 shadow-soft transition-transform duration-300 group-hover:scale-110">
+                    <Icon className="h-4 w-4 text-foreground" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display text-xl font-semibold leading-none text-foreground transition-colors">{count}</div>
+                    <div className="text-[10px] font-medium leading-tight text-muted-foreground mt-1">{card.label}</div>
+                  </div>
+                  <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/40 transition-all duration-300 group-hover:translate-x-1 group-hover:text-foreground" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="font-display text-2xl font-semibold leading-none text-foreground transition-colors">{count}</div>
-                  <div className="text-[11px] font-medium leading-tight text-muted-foreground mt-1">{card.label}</div>
-                </div>
-                <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/40 transition-all duration-300 group-hover:translate-x-1 group-hover:text-foreground" />
+                {top && count > 0 ? (
+                  <div className="min-w-0 border-t border-border/40 pt-2">
+                    <div className="truncate text-[11px] font-medium text-foreground/80">{top.subject}</div>
+                    <div className="truncate text-[10px] text-muted-foreground">— {top.fromName}</div>
+                  </div>
+                ) : null}
               </button>
             );
           })}
