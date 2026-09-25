@@ -57,3 +57,17 @@ server.log
 # Skills directory
 /skills/.env
 .env.local
+
+# --- Hardening (Task 81) — transient runtime + agent artifacts ---
+
+# Tool result scratch files (transient agent working files — not source code)
+/tool-results/
+
+# Dev server PID tracking (changes on every restart — not source)
+/.zscripts/
+/.zscripts/dev.pid
+
+# BrightData budget file (transient runtime state — kept in /tmp by default,
+# but if BRIGHTDATA_BUDGET_FILE is set to a project-local path, ignore it)
+cirkle-brightdata-budget.json
+*.tmp.brightdata-budget.json
