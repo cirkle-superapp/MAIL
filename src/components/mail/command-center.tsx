@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 import {
   Zap,
   Reply,
@@ -79,7 +79,24 @@ export function CommandCenterView() {
     refetchOnWindowFocus: false,
   });
 
-  const today = format(new Date(), "EEEE, MMMM d");
+  // Time-based greeting + date are computed client-side ONLY to avoid
+  // hydration mismatches: the server runs in UTC, the client runs in the
+  // user's local timezone (e.g. Africa/Cairo = UTC+2), so the greeting
+  // and date string can differ between SSR and client hydration.
+  // useSyncExternalStore returns the server snapshot ("\u00A0") during SSR
+  // and the client snapshot (real value) during hydration — no mismatch,
+  // no setState-in-effect, no extra render.
+  const subscribe = () => () => {};
+  const greetingText = useSyncExternalStore(
+    subscribe,
+    () => greeting(),
+    () => "\u00A0"
+  );
+  const todayText = useSyncExternalStore(
+    subscribe,
+    () => format(new Date(), "EEEE, MMMM d"),
+    () => "\u00A0"
+  );
 
   return (
     <div className="aurora-bg aurora-drift relative h-full overflow-y-auto">
@@ -93,9 +110,9 @@ export function CommandCenterView() {
           </div>
           <div className="flex-1">
             <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              {greeting()}
+              {greetingText}
             </h1>
-            <p className="text-sm text-muted-foreground">{today}</p>
+            <p className="text-sm text-muted-foreground">{todayText}</p>
           </div>
           <div className="hidden items-center gap-2 sm:flex">
             <Button
