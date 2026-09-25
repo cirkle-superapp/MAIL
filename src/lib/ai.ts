@@ -68,6 +68,130 @@ async function callZai(messages: Msg[]): Promise<string | null> {
 }
 
 /**
+ * Generic OpenAI-compatible chat completions caller.
+ * Works for: Groq, NVIDIA NIM, HuggingFace router, OpenRouter (and any other
+ * OpenAI-compatible endpoint). Returns the raw content or null.
+ */
+async function callOpenAICompatible(
+  url: string,
+  key: string | undefined,
+  model: string,
+  messages: Msg[],
+  timeoutMs = 20000
+): Promise<string | null> {
+  if (!key) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.3,
+        max_tokens: 1500,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Call Groq (ultra-fast inference, Llama/Qwen/DeepSeek models). */
+async function callGroq(
+  model: string,
+  messages: Msg[],
+  timeoutMs = 15000
+): Promise<string | null> {
+  return callOpenAICompatible(
+    "https://api.groq.com/openai/v1/chat/completions",
+    process.env.GROQ_API_KEY,
+    model,
+    messages,
+    timeoutMs
+  );
+}
+
+/** Call NVIDIA NIM (Nemotron, Llama, Qwen models on NVIDIA's edge infra). */
+async function callNvidia(
+  model: string,
+  messages: Msg[],
+  timeoutMs = 20000
+): Promise<string | null> {
+  return callOpenAICompatible(
+    "https://integrate.api.nvidia.com/v1/chat/completions",
+    process.env.NVIDIA_API_KEY,
+    model,
+    messages,
+    timeoutMs
+  );
+}
+
+/** Call HuggingFace Inference API (router, OpenAI-compatible). */
+async function callHuggingFace(
+  model: string,
+  messages: Msg[],
+  timeoutMs = 25000
+): Promise<string | null> {
+  return callOpenAICompatible(
+    "https://api-inference.huggingface.co/v1/chat/completions",
+    process.env.HF_API_KEY,
+    model,
+    messages,
+    timeoutMs
+  );
+}
+
+/**
+ * Call Google Gemini (Generative Language API). Uses Google's native request
+ * format (contents/parts, not OpenAI's messages). Returns the text or null.
+ */
+async function callGemini(
+  model: string,
+  messages: Msg[],
+  timeoutMs = 20000
+): Promise<string | null> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  // Gemini uses role "model" instead of "assistant"
+  const contents = messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents,
+        generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Multi-model consensus: call N models in parallel, return all raw responses
  * (non-null only). Used for majority-vote classification + best-confidence
  * generation.
@@ -85,20 +209,43 @@ async function multiModel(
     .map((r, i) => ({ model: models[i].name, content: r.value! }));
 }
 
-/** Consensus models for classification (fast, diverse). */
+/**
+ * Consensus models for classification — 8 models across 6 providers for
+ * maximum diversity + majority-vote accuracy. Fast models (≤20s timeout).
+ * Each provider adds architectural diversity (Llama, Qwen, DeepSeek, Gemini,
+ * Nemotron, z-ai) so no single model's bias dominates.
+ */
 function classifyModels(messages: Msg[]): Array<{ name: string; call: () => Promise<string | null> }> {
   return [
-    { name: "llama-3.1-8b", call: () => callOpenRouter("meta-llama/llama-3.1-8b-instruct", messages, 15000) },
-    { name: "qwen-2.5-7b", call: () => callOpenRouter("qwen/qwen-2.5-7b-instruct", messages, 15000) },
-    { name: "deepseek-chat", call: () => callOpenRouter("deepseek/deepseek-chat", messages, 20000) },
+    // OpenRouter (3 models)
+    { name: "or-llama-3.1-8b", call: () => callOpenRouter("meta-llama/llama-3.1-8b-instruct", messages, 15000) },
+    { name: "or-qwen-2.5-7b", call: () => callOpenRouter("qwen/qwen-2.5-7b-instruct", messages, 15000) },
+    { name: "or-deepseek-chat", call: () => callOpenRouter("deepseek/deepseek-chat", messages, 20000) },
+    // Groq (ultra-fast, 2 models)
+    { name: "groq-llama-3.1-8b", call: () => callGroq("llama-3.1-8b-instant", messages, 12000) },
+    { name: "groq-qwen-2.5", call: () => callGroq("qwen-2.5-7b", messages, 12000) },
+    // NVIDIA NIM (1 model — Nemotron 70B, strong reasoning)
+    { name: "nv-nemotron-70b", call: () => callNvidia("nvidia/llama-3.1-nemotron-70b-instruct", messages, 20000) },
+    // Gemini (1 model — Google's native format)
+    { name: "gemini-1.5-flash", call: () => callGemini("gemini-1.5-flash", messages, 15000) },
+    // HuggingFace (1 model)
+    { name: "hf-llama-3.2-3b", call: () => callHuggingFace("meta-llama/Llama-3.2-3B-Instruct", messages, 20000) },
+    // z-ai SDK (always-available built-in fallback)
     { name: "z-ai", call: () => callZai(messages) },
   ];
 }
 
-/** Generation models (better reasoning, 2 models for best-confidence pick). */
+/**
+ * Generation models — 5 models across 5 providers for best-confidence pick.
+ * Larger/better-reasoning models (higher timeouts). The result with the
+ * highest confidence wins.
+ */
 function generationModels(messages: Msg[]): Array<{ name: string; call: () => Promise<string | null> }> {
   return [
-    { name: "deepseek-chat", call: () => callOpenRouter("deepseek/deepseek-chat", messages, 25000) },
+    { name: "or-deepseek-chat", call: () => callOpenRouter("deepseek/deepseek-chat", messages, 25000) },
+    { name: "groq-llama-3.3-70b", call: () => callGroq("llama-3.3-70b-versatile", messages, 20000) },
+    { name: "nv-nemotron-70b", call: () => callNvidia("nvidia/llama-3.1-nemotron-70b-instruct", messages, 25000) },
+    { name: "gemini-1.5-pro", call: () => callGemini("gemini-1.5-pro", messages, 25000) },
     { name: "z-ai", call: () => callZai(messages) },
   ];
 }
