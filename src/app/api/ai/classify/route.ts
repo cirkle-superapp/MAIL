@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { classifyIntent } from "@/lib/email-utils";
+import { classifyIntent, type Intent } from "@/lib/email-utils";
 import { aiClassify } from "@/lib/ai";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
         body: email.body,
       });
       if (ai && ai.confidence > baseline.confidence) {
-        result = ai;
+        result = { ...ai, intent: ai.intent as Intent };
       }
     }
 

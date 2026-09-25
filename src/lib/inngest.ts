@@ -1,4 +1,4 @@
-import { Inngest } from "inngest";
+import { Inngest, cron } from "inngest";
 
 /** Inngest client — used for server-side background jobs (scheduled email delivery). */
 export const inngest = new Inngest({
@@ -13,7 +13,7 @@ export const inngest = new Inngest({
  * more reliable (works even when the user isn't looking at the app).
  */
 export const deliverScheduledEmails = inngest.createFunction(
-  { id: "deliver-scheduled-emails", cron: "* * * * *", retries: 2 },
+  { id: "deliver-scheduled-emails", retries: 2, triggers: [cron("* * * * *")] },
   async () => {
     const { db } = await import("@/lib/db");
     const now = new Date();

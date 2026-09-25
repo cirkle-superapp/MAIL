@@ -28,6 +28,7 @@ export interface Email {
   attachmentName: string;
   snoozedUntil: string | null;
   scheduledFor: string | null;
+  intent: string;
   createdAt: string;
   updatedAt: string;
 }

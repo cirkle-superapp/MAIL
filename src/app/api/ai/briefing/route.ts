@@ -13,7 +13,7 @@ export async function GET() {
     const now = new Date();
     const emails = await db.email.findMany({
       where: { folder: { in: ["INBOX", "SENT", "ARCHIVE"] } },
-      select: { id: true, fromName: true, fromEmail: true, toEmails: true, subject: true, snippet: true, body: true, date: true, intent: true, isRead: true, folder: true },
+      select: { id: true, fromName: true, fromEmail: true, toEmails: true, subject: true, snippet: true, body: true, date: true, intent: true, isRead: true, folder: true, labels: true },
       orderBy: { date: "desc" },
       take: 200,
     });

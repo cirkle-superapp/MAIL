@@ -19,7 +19,7 @@ export const seedLabels: Label[] = [
 
 const me = "you@cirkle.mail";
 
-export const seedEmails: Omit<Email, "id" | "createdAt" | "updatedAt" | "snoozedUntil" | "scheduledFor">[] = [
+export const seedEmails: Omit<Email, "id" | "intent" | "createdAt" | "updatedAt" | "snoozedUntil" | "scheduledFor">[] = [
   {
     threadId: "t_welcome1",
     fromName: "Cirkle Team",

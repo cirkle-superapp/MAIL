@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     isImportant?: boolean;
     isRead?: boolean;
     hasAttachment?: boolean;
+    intent?: string;
     snoozedUntil?: Date | { gt: Date } | null;
     OR?: Array<Record<string, unknown>>;
     AND?: Array<Record<string, unknown>>;

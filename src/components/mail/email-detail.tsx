@@ -227,6 +227,7 @@ export function EmailDetail({
   }
 
   function archive() {
+    if (!email) return;
     const prevFolder = email.folder;
     patchSilent({ folder: "ARCHIVE" }).then(() => {
       onBack();
@@ -234,6 +235,7 @@ export function EmailDetail({
     });
   }
   function trash() {
+    if (!email) return;
     const prevFolder = email.folder;
     patchSilent({ folder: "TRASH" }).then(() => {
       onBack();

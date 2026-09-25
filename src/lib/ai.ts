@@ -16,7 +16,7 @@ async function getZai(): Promise<ZAI> {
   return zaiInstance;
 }
 
-type Msg = { role: "assistant" | "user"; content: string };
+type Msg = { role: "assistant" | "user" | "system"; content: string };
 
 /** Call OpenRouter (OpenAI-compatible). Returns the raw content or null. */
 async function callOpenRouter(
