@@ -22,13 +22,19 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Cirkle Mail — your connected inbox",
+  title: "Cirkle — A New Social Operating System",
   description:
-    "Cirkle Mail — a fast, distraction-free email client with a premium gold + teal design system. Built with Next.js, Prisma, and shadcn/ui.",
-  keywords: ["Cirkle", "Cirkle Mail", "email", "mail", "inbox", "Next.js"],
+    "Cirkle (دواير) — a luxurious AI-native social operating system. Chat, video, photos, social, travel, payments, and mail in one premium app.",
+  keywords: ["Cirkle", "دواير", "Dawayer", "social operating system", "super app", "AI-native", "mail", "chat"],
   authors: [{ name: "Cirkle" }],
   icons: {
-    icon: "/logo.svg",
+    icon: [{ url: "/favicon.ico", sizes: "256x256" }, { url: "/logo.svg" }],
+  },
+  themeColor: "#1A4A5A",
+  openGraph: {
+    title: "Cirkle — دواير",
+    description: "The next-generation social operating system.",
+    type: "website",
   },
 };
 

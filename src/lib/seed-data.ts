@@ -27,10 +27,10 @@ export const seedEmails: Omit<Email, "id" | "createdAt" | "updatedAt" | "snoozed
     toEmails: me,
     ccEmails: "",
     bccEmails: "",
-    subject: "Welcome to Cirkle Mail — your connected inbox",
+    subject: "Welcome to Cirkle (دواير) — your connected inbox",
     body:
-      "<p>Hi there,</p><p>Welcome aboard! Your new Cirkle Mail inbox is ready to go. We built Cirkle Mail to be fast, distraction-free, and genuinely pleasant to use — with a premium gold + teal design system to match.</p><p>Here are a few things you can try right now:</p><ul><li>Press <b>Compose</b> to send your first message.</li><li>Star important emails to find them later.</li><li>Use <b>Labels</b> on the left to organize conversations.</li><li>Search anything from the top bar.</li></ul><p>Reply to this email if you have any questions — we read every one.</p><p>Cheers,<br/>The Cirkle Team</p>",
-    snippet: "Welcome aboard! Your new Cirkle Mail inbox is ready to go. We built Cirkle Mail to be fast, distraction-free, and genuinely pleasant to use.",
+      "<p>Hi there,</p><p>Welcome aboard! Your new Cirkle inbox is ready to go. Cirkle (دواير) is a luxurious AI-native social operating system — fast, distraction-free, and genuinely pleasant to use — with a premium gold + teal design system to match.</p><p>Here are a few things you can try right now:</p><ul><li>Press <b>Compose</b> to send your first message.</li><li>Star important emails to find them later.</li><li>Use <b>Labels</b> on the left to organize conversations.</li><li>Search anything from the top bar.</li></ul><p>Reply to this email if you have any questions — we read every one.</p><p>Cheers,<br/>The Cirkle Team</p>",
+    snippet: "Welcome aboard! Your new Cirkle inbox is ready to go. Cirkle (دواير) is a luxurious AI-native social operating system — fast, distraction-free, and genuinely pleasant to use.",
     date: iso(2 * HOUR),
     isRead: false,
     isStarred: true,

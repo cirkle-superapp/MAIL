@@ -1,7 +1,7 @@
 import ZAI from "z-ai-web-dev-sdk";
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Cirkle Mail AI — Multi-Model Consensus Layer
+   Cirkle (دواير) AI — Multi-Model Consensus Layer
    Calls multiple LLMs in parallel (OpenRouter multi-model + z-ai SDK) and
    uses consensus (majority vote for classification, best-confidence for
    generation). Every output is source-grounded. Graceful fallback to the

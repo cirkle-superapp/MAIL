@@ -110,9 +110,12 @@ export function CommandCenterView() {
             <CirkleLogo size={44} animated />
           </div>
           <div className="flex-1">
-            <h1 className="font-display text-xl font-medium tracking-tight text-foreground sm:text-2xl">
-              {greetingText}
-            </h1>
+            <div className="flex items-baseline gap-2">
+              <h1 className="font-display text-xl font-medium tracking-tight text-foreground sm:text-2xl">
+                {greetingText}
+              </h1>
+              <span className="font-display text-sm text-muted-foreground/70" dir="rtl" lang="ar">دواير</span>
+            </div>
             <p className="text-xs font-medium text-muted-foreground">{todayText}</p>
           </div>
           <div className="hidden items-center gap-2 sm:flex">

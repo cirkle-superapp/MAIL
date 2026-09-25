@@ -1,5 +1,5 @@
 /**
- * Turso schema setup — pushes the Cirkle Mail schema to Turso (libsql).
+ * Turso schema setup — pushes the Cirkle schema to Turso (libsql).
  * Run: DATABASE_URL_TURSO=... bun run src/lib/turso-setup.ts
  * This creates the same tables as the Prisma schema, on the Turso database.
  */

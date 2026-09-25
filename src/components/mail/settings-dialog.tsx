@@ -139,7 +139,7 @@ export function SettingsDialog() {
             <Textarea
               value={sigDraft}
               onChange={(e) => setSigDraft(e.target.value)}
-              placeholder="e.g. — Sent from Cirkle Mail"
+              placeholder="e.g. — Sent from Cirkle (دواير)"
               className="min-h-[72px] resize-none text-sm"
             />
           </section>
