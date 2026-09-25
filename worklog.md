@@ -939,3 +939,28 @@ Work Log:
 
 Stage Summary:
 - ALL 5 services (GitHub + Vercel + Neon + Turso + Inngest) are connected, deployed, and working in harmony. Local and remote git are in sync at f0152bc (no rollback). Backup tag v-production-stable pushed. Branch protection enabled (no force pushes to main). Nothing essential deleted or removed (20 routes, 26 components, 8 lib, 6 store/hooks, 2 scripts, all docs — all intact). 8 screenshots captured as deployment proof. Production live on https://cirkle-mail.vercel.app with real data from Neon, analytics from Neon direct, Inngest route serving functions, Vercel Cron backup ready.
+
+---
+Task ID: UI-ARCH-AUDIT-SMART-CARDS
+Agent: main (Z.ai Code) — COO + CTO + PM + UI architect + email structuring expert
+Task: UI architecture audit + creative improvement: smart summary cards with context
+
+Work Log:
+- **UI architecture audit** (VLM-guided, z-ai vision on Command Center + Compose): identified the top structural issue — the Command Center summary cards (Needs attention, Needs reply, Waiting on, etc.) showed only COUNTS ("4 Needs attention") with zero context. A user had to click into each card to see WHAT needed attention. This is a density/information-architecture failure for a "Command Center" — prime real estate should show actionable context, not bare numbers.
+- **Backend**: extended /api/emails/stats to return a new 'topItems' field — the most recent email per Communication OS view (NOW/REPLY/WAITING/RECEIPTS/SUBSCRIPTIONS), each with {id, subject, fromName}. Added fromName + subject + date to the Prisma select, added orderBy date desc so the top item is the most recent. The setTop() helper captures the first (most recent) match per category during the single existing loop — no extra DB queries.
+- **Type**: EmailStats interface in src/hooks/use-mail.ts extended with topItems?: Record<string, {id, subject, fromName} | null>.
+- **Frontend**: command-center.tsx summary cards restructured from single-row (icon | count+label | arrow) to a two-row card layout:
+    Row 1: [icon] count + label [arrow]  (the original compact row)
+    Row 2: top item subject (truncated) + "— sender" (truncated)  (NEW context row, only when count > 0)
+  The context row has a subtle border-t border-border/40 separator + pt-2. Icon reduced h-5→h-4, count text-2xl→text-xl, label text-[11px]→text-[10px] to make room for the context row without increasing card height much.
+- **Verification**:
+  - Local: /api/emails/stats returns topItems with real data (NOW: Welcome to Cirkle Mail — Cirkle Team; REPLY: Re: Q3 redesign — Priya Sharma; WAITING: Re: Q3 redesign — You; RECEIPTS: Your August invoice — Acme Billing; SUBSCRIPTIONS: 5 frontend patterns — The Weekly Byte).
+  - Command Center renders the context on the cards (verified via agent-browser read).
+  - VLM confirmed: "the summary cards show context, displaying the top item's subject and a preview of the sender's message, not just counts."
+  - Lint clean (exit 0). No functionality removed. No files deleted (20 routes, 26 components, 8 lib, 6 hooks+store — all intact).
+  - Production: pushed commit b1ce93b to GitHub main, Vercel deployment dpl_2ib7oTy7JVTDU71dAQMVwZmE91JX READY, verified live on cirkle-mail.vercel.app — smart cards render with real context on production.
+- **Backup**: new git tag v-smart-cards pushed to GitHub (marks the known-good state with smart cards).
+- **No rollback**: local HEAD = b1ce93b = remote HEAD (in sync). Branch protection (linear history, no force push) still active from the prior turn.
+
+Stage Summary:
+- Command Center summary cards upgraded from bare counts to contextual previews — each card now shows the top item's subject + sender under the count. This makes the Command Center genuinely useful at a glance: you see WHAT needs attention ("Re: Q3 redesign — Priya Sharma", "Your August invoice — Acme Billing"), not just that 4 things need attention. Backend + type + frontend changes, lint clean, nothing deleted, production live with backup tag v-smart-cards.
