@@ -164,15 +164,18 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
             <button
               onClick={() => setFolder("COMMAND_CENTER")}
               className={cn(
-                "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
+                "group relative flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
                 isActive("COMMAND_CENTER")
                   ? "bg-primary/10 font-semibold text-primary"
                   : "text-foreground/80 hover:bg-muted"
               )}
             >
+              {isActive("COMMAND_CENTER") && (
+                <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-gradient-to-b from-primary to-primary/60 shadow-soft" />
+              )}
               <LayoutDashboard
                 className={cn(
-                  "h-[1.05rem] w-[1.05rem]",
+                  "h-[1.05rem] w-[1.05rem] transition-transform duration-200 group-hover:scale-110",
                   isActive("COMMAND_CENTER") ? "text-primary" : "text-muted-foreground"
                 )}
               />
@@ -197,15 +200,18 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   key={item.key}
                   onClick={() => setFolder(item.key)}
                   className={cn(
-                    "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
+                    "group relative flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
                     active
                       ? "bg-accent/10 font-semibold text-accent"
                       : "text-foreground/80 hover:bg-muted"
                   )}
                 >
+                  {active && (
+                    <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-gradient-to-b from-accent to-accent/60 shadow-soft" />
+                  )}
                   <Icon
                     className={cn(
-                      "h-[1.05rem] w-[1.05rem]",
+                      "h-[1.05rem] w-[1.05rem] transition-transform duration-200 group-hover:scale-110",
                       active ? "text-accent" : "text-muted-foreground"
                     )}
                   />
@@ -213,7 +219,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   {count ? (
                     <Badge
                       variant="secondary"
-                      className="h-5 min-w-[1.25rem] justify-center bg-accent/15 px-1.5 text-[11px] font-semibold text-accent"
+                      className="h-5 min-w-[1.25rem] justify-center bg-accent/15 px-1.5 text-[11px] font-semibold tabular-nums text-accent animate-bounce-subtle"
                     >
                       {count}
                     </Badge>
@@ -242,15 +248,18 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                 key={item.key}
                 onClick={() => setFolder(item.key)}
                 className={cn(
-                  "group flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
+                  "group relative flex items-center gap-3 rounded-r-full rounded-l-lg px-3 py-2 text-sm transition-all duration-200 hover:translate-x-0.5",
                   active
                     ? "bg-primary/10 font-semibold text-primary"
                     : "text-foreground/80 hover:bg-muted"
                 )}
               >
+                {active && (
+                  <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-gradient-to-b from-primary to-primary/60 shadow-soft" />
+                )}
                 <Icon
                   className={cn(
-                    "h-[1.05rem] w-[1.05rem]",
+                    "h-[1.05rem] w-[1.05rem] transition-transform duration-200 group-hover:scale-110",
                     active ? "text-primary" : "text-muted-foreground"
                   )}
                 />
@@ -259,7 +268,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   <Badge
                     variant="secondary"
                     className={cn(
-                      "h-5 min-w-[1.25rem] justify-center bg-primary/15 px-1.5 text-[11px] font-semibold text-primary"
+                      "h-5 min-w-[1.25rem] justify-center bg-primary/15 px-1.5 text-[11px] font-semibold tabular-nums text-primary animate-bounce-subtle"
                     )}
                   >
                     {count}

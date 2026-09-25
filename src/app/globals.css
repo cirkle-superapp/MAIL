@@ -314,6 +314,65 @@
   .stagger-4 { animation-delay: 0.2s; }
   .stagger-5 { animation-delay: 0.25s; }
   .stagger-6 { animation-delay: 0.3s; }
+
+  /* ═══ State-of-the-art micro-interactions ═══ */
+
+  /* Shimmer sweep — a light gradient sweeps across loading skeletons (premium) */
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: hsl(var(--muted) / 0.6);
+  }
+  .skeleton-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(var(--background) / 0.6), transparent);
+    animation: shimmerSweep 1.6s ease-in-out infinite;
+  }
+  @keyframes shimmerSweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  /* Slide-in from right — for email detail + drawer entrances */
+  .animate-slide-in-right { animation: slideInRight 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  @keyframes slideInRight { 0% { opacity: 0; transform: translateX(24px); } 100% { opacity: 1; transform: translateX(0); } }
+
+  /* Scale-in — for dialogs + modals (spring physics) */
+  .animate-scale-in { animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+  @keyframes scaleIn { 0% { opacity: 0; transform: scale(0.94); } 100% { opacity: 1; transform: scale(1); } }
+
+  /* Slide-down — for dropdowns + menus */
+  .animate-slide-down { animation: slideDown 0.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  @keyframes slideDown { 0% { opacity: 0; transform: translateY(-6px); } 100% { opacity: 1; transform: translateY(0); } }
+
+  /* Gradient shift — for animated gradient text/borders */
+  .animate-gradient-shift { background-size: 200% 200%; animation: gradientShift 6s ease infinite; }
+  @keyframes gradientShift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+  /* Bounce subtle — for notification badges */
+  .animate-bounce-subtle { animation: bounceSubtle 2.5s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+  @keyframes bounceSubtle { 0%, 100% { transform: translateY(0); } 15% { transform: translateY(-3px); } 30% { transform: translateY(0); } }
+
+  /* Fade-in (no movement) — for overlays + backdrops */
+  .animate-fade-in { animation: fadeIn 0.25s ease-out both; }
+  @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+  /* Reading progress bar — for email detail top */
+  .reading-progress { transform-origin: left; transition: transform 0.1s ease-out; }
+
+  /* Glass hover lift — for cards that lift on hover */
+  .hover-lift { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease; }
+  .hover-lift:hover { transform: translateY(-2px); }
+
+  /* Tabular numbers — for counts + timestamps (prevents layout jitter) */
+  .tabular-nums { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+
+  /* Text balance — for headings (wraps more evenly) */
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
 }
 
 @media (prefers-reduced-motion: reduce) {

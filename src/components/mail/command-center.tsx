@@ -175,7 +175,7 @@ export function CommandCenterView() {
                     <Icon className="h-4 w-4 text-foreground" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="font-display text-xl font-semibold leading-none text-foreground transition-colors">{count}</div>
+                    <div className="font-display text-xl font-semibold leading-none tabular-nums text-foreground transition-colors">{count}</div>
                     <div className="text-[10px] font-medium leading-tight text-muted-foreground mt-1">{card.label}</div>
                   </div>
                   <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/40 transition-all duration-300 group-hover:translate-x-1 group-hover:text-foreground" />
