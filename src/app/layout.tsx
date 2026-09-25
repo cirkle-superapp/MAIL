@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Fraunces, Tajawal } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { JsonLd, homePageJsonLd } from "@/components/search/JsonLd";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -84,6 +85,10 @@ export default function RootLayout({
         />
         {children}
         <Toaster />
+        {/* SEO: schema.org WebSite + SearchAction (Google sitelinks search box).
+            Server-rendered here (layout.tsx is a server component) — can't be
+            imported into client components directly in Next.js 16 App Router. */}
+        <JsonLd data={homePageJsonLd()} />
       </body>
     </html>
   );
