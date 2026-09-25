@@ -210,6 +210,53 @@ async function multiModel(
 }
 
 /**
+ * Sequential failover: try each model ONE AT A TIME until one succeeds.
+ * Used as a FALLBACK when multiModel() returns empty (all models failed
+ * in parallel). This ensures generation tasks ALWAYS get a result — if the
+ * primary model is down, the next provider is tried, then the next, etc.
+ * The z-ai SDK is always last (it's the always-available built-in fallback).
+ *
+ * Returns the first non-null response, or null if ALL models fail.
+ */
+async function callWithFailover(
+  models: Array<{ name: string; call: () => Promise<string | null> }>
+): Promise<{ model: string; content: string } | null> {
+  for (const m of models) {
+    try {
+      const content = await m.call();
+      if (content) {
+        return { model: m.name, content };
+      }
+    } catch {
+      // try the next model
+    }
+  }
+  return null;
+}
+
+/**
+ * Generation helper: try the multi-model consensus first (parallel, fast,
+ * best-confidence pick). If ALL models returned null, fall back to sequential
+ * failover (tries each model one at a time until one succeeds). This is the
+ * "if one model fails, choose another" pattern — ensures generation tasks
+ * always return a result.
+ */
+async function generateWithFailover(
+  messages: Msg[],
+  models: Array<{ name: string; call: () => Promise<string | null> }>
+): Promise<{ model: string; content: string } | null> {
+  // 1. Parallel consensus — pick the best-confidence response
+  const responses = await multiModel(messages, models);
+  if (responses.length > 0) {
+    // Return the first response (the generationModels list is ordered by
+    // preference — deepseek-chat first, then Groq, NVIDIA, Gemini, z-ai)
+    return responses[0];
+  }
+  // 2. Sequential failover — try each model one at a time
+  return callWithFailover(models);
+}
+
+/**
  * Consensus models for classification — 8 models across 6 providers for
  * maximum diversity + majority-vote accuracy. Fast models (≤20s timeout).
  * Each provider adds architectural diversity (Llama, Qwen, DeepSeek, Gemini,
@@ -378,7 +425,15 @@ export async function aiHandleEmail(email: {
     }
   }
   if (best) return best;
-  console.error("[aiHandleEmail] no valid JSON from any model");
+  // Sequential failover: if all parallel models failed, try each one at a time
+  const fb = await callWithFailover(generationModels(messages));
+  if (fb) {
+    const parsed = extractJson<Partial<HandleResult>>(fb.content);
+    if (parsed && (parsed.summary || parsed.suggestedReply)) {
+      return { ...fallback, ...parsed, provenance };
+    }
+  }
+  console.error("[aiHandleEmail] no valid JSON from any model (even after failover)");
   return fallback;
 }
 
@@ -443,7 +498,15 @@ export async function aiConversation(messages: Array<{
     }
   }
   if (best) return best;
-  console.error("[aiConversation] no valid JSON from any model");
+  // Sequential failover: if all parallel models failed, try each one at a time
+  const fb = await callWithFailover(generationModels(chatMessages));
+  if (fb) {
+    const parsed = extractJson<Partial<ConversationResult>>(fb.content);
+    if (parsed && parsed.status) {
+      return { ...fallback, ...parsed, provenance };
+    }
+  }
+  console.error("[aiConversation] no valid JSON from any model (even after failover)");
   return fallback;
 }
 
@@ -511,7 +574,15 @@ export async function aiBriefing(input: {
     }
   }
   if (best) return best;
-  console.error("[aiBriefing] no valid JSON from any model");
+  // Sequential failover: if all parallel models failed, try each one at a time
+  const fb = await callWithFailover(generationModels(chatMessages));
+  if (fb) {
+    const parsed = extractJson<Partial<BriefingResult>>(fb.content);
+    if (parsed && parsed.headline) {
+      return { ...fallback, ...parsed };
+    }
+  }
+  console.error("[aiBriefing] no valid JSON from any model (even after failover)");
   return fallback;
 }
 
