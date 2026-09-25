@@ -1031,3 +1031,30 @@ Stage Summary:
   3. **AI Priority badge** — fetched on mount from `/api/ai/priority`, rendered as a colored pill (rose/orange/amber/muted by level) with `<Gauge/>` icon + numeric score, `title={reasoning}` for hover context. Placed right after the intent badge in the subject row.
 - All existing functionality preserved: Archive, Delete (Trash + Delete forever), Mark unread, Snooze/Unsnooze, Important toggle, Label add/remove, Reply, Reply all, Forward, Smart follow-up, Handle panel, Conversation panel, Quick Reply chips, Star button, More dropdown (Print), in-message Reply/Forward buttons — unchanged handler logic, only additive UI.
 - `bun run lint` passes clean (0 errors, 0 warnings).
+
+---
+Task ID: CREATIVE-OUT-OF-BOX-FEATURES
+Agent: main (Z.ai Code) — COO + CTO + PM + creative UI architect
+Task: 3 creative differentiating features that outsmart all competitors — AI Priority Score + Focus Mode + Voice Readback
+
+Work Log:
+- **AI Priority Score** (the headline feature — no competitor does this well):
+  - Backend: aiPriority() in src/lib/ai.ts — uses the existing multi-model consensus (z-ai SDK + optional OpenRouter models). The LLM scores 0-100 based on urgency (deadlines, time-sensitive language like "today"/"3pm"/"EOD"), sender importance, action required (reply/decision), and impact (financial/legal/security/career). Returns {score, level: low|medium|high|urgent, reasoning, confidence}.
+  - Endpoint: /api/ai/priority (POST {id} → fetches the email, scores it, returns the result).
+  - Frontend: color-coded badge on the email detail (rose=urgent 86+, orange=high 61+, amber=medium 31+, muted=low 0-30) with a Gauge icon + the numeric score + hover tooltip with the reasoning. Fetched on mount + on email change.
+  - Verified: Priya's Q3 email (needs reply, 3pm sync) scored 85/high "Requires review and reply before a 3pm sync" (confidence 0.95). The welcome email scored 15/low "no urgency or required action" (confidence 0.9). The AI accurately differentiates urgency.
+- **Focus/Zen Reading Mode** (distraction-free full-width reading — Superhuman has "focus" but not this clean):
+  - Store: focusMode: boolean + setFocusMode added to useMailStore.
+  - Keyboard: 'z' toggles focus mode (Esc exits). Added to use-keyboard-shortcuts.ts with toast feedback.
+  - Layout: mail-app.tsx renders a minimal layout when focusMode is on — hides the TopBar + Sidebar + EmailList, shows only the EmailDetail full-width with animate-fade-in. The detail shows a minimal top bar (Back + subject + Exit Focus), widens the body to max-w-3xl, hides the full toolbar + sticky footer.
+  - The Focus (Maximize2) button in the toolbar also enters focus mode (for mouse users).
+- **Voice Readback (TTS)** (accessibility + multitasking — no competitor offers this):
+  - Endpoint: /api/tts (POST {text, voice, speed} → WAV audio via z-ai-web-dev-sdk audio.tts.create, tongtong voice, 24kHz, strips HTML, 1024-char chunks).
+  - Frontend: Listen (Volume2) button in the toolbar. Click → POST to /api/tts with the email body (HTML-stripped, first 1000 chars) → plays the WAV via a hidden <audio ref>. Click-again-to-pause. Loader2 spinner while loading. Destructive toast on failure. Auto-resets on ended.
+  - Verified: /api/tts returns a real WAV (208KB, 24kHz Microsoft PCM).
+- **All on production**: pushed commit 3526e33 → Vercel dpl_6SnjvmkZB8NoxvcFjKAawzamAk6m READY → verified live on cirkle-mail.vercel.app. The Focus button ("Focus mode (press Z)") + Listen button ("Listen to this email (TTS)") are visible in the toolbar. The priority endpoint returns real scores with reasoning.
+- **Backup**: new git tag v-creative-features pushed.
+- **No rollback**: local = remote = 3526e33. Branch protection active. Nothing deleted — now 22 API routes (added /api/ai/priority + /api/tts), 26 components, 8 lib, 6 hooks+store.
+
+Stage Summary:
+- Three genuinely differentiating features live on production: (1) AI Priority Score — every email gets a smart 0-100 score with reasoning, displayed as a color-coded badge so users instantly know what to tackle first. (2) Focus/Zen Mode — press Z for distraction-free full-width reading. (3) Voice Readback — a Listen button that reads the email aloud via TTS. These features outsmart Gmail (no priority scoring, no TTS), Superhuman (no TTS, focus mode is weaker), Hey (no AI scoring, no TTS), and Notion Mail (none of these). Lint clean, all features verified, production live with backup tag v-creative-features.
