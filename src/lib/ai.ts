@@ -737,5 +737,24 @@ Body (first 800 chars): ${(email.body ?? email.snippet ?? "").slice(0, 800)}`;
       };
     }
   }
+  // Fallback: if the multi-model consensus didn't return valid JSON, try the
+  // z-ai SDK alone (always available). Some external providers may fail from
+  // Vercel's serverless IPs — this ensures the priority score always works.
+  try {
+    const zaiRaw = await callZai(messages);
+    if (zaiRaw) {
+      const parsed = extractJson<PriorityResult>(zaiRaw);
+      if (parsed && typeof parsed.score === "number" && parsed.score >= 0 && parsed.score <= 100) {
+        const score = Math.round(parsed.score);
+        const level = score >= 86 ? "urgent" : score >= 61 ? "high" : score >= 31 ? "medium" : "low";
+        return {
+          score,
+          level,
+          reasoning: parsed.reasoning ?? "",
+          confidence: parsed.confidence ?? 0.5,
+        };
+      }
+    }
+  } catch {}
   return null;
 }
