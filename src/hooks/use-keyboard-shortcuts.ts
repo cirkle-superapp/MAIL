@@ -24,6 +24,8 @@ export function useKeyboardShortcuts(onFocusSearch: () => void) {
   const searchQuery = useMailStore((s) => s.searchQuery);
   const selectedEmailId = useMailStore((s) => s.selectedEmailId);
   const setSelectedEmailId = useMailStore((s) => s.setSelectedEmailId);
+  const focusMode = useMailStore((s) => s.focusMode);
+  const setFocusMode = useMailStore((s) => s.setFocusMode);
   const composeOpen = useMailStore((s) => s.composeOpen);
   const openCompose = useMailStore((s) => s.openCompose);
   const openReply = useMailStore((s) => s.openReply);
@@ -105,6 +107,10 @@ export function useKeyboardShortcuts(onFocusSearch: () => void) {
         if (e.key === "Escape") {
           (e.target as HTMLElement).blur();
         }
+        // Esc also exits focus mode
+        if (focusMode) {
+          setFocusMode(false);
+        }
         return;
       }
 
@@ -128,6 +134,14 @@ export function useKeyboardShortcuts(onFocusSearch: () => void) {
       if (key === "?") {
         e.preventDefault();
         window.dispatchEvent(new Event("cirkle:show-shortcuts"));
+        return;
+      }
+
+      // z — toggle Focus/Zen reading mode (distraction-free full-width email)
+      if (key === "z" && selectedEmailId) {
+        e.preventDefault();
+        setFocusMode(!focusMode);
+        toast({ title: focusMode ? "Focus mode off" : "Focus mode on — press z or Esc to exit", duration: 1500 });
         return;
       }
 
@@ -222,5 +236,5 @@ export function useKeyboardShortcuts(onFocusSearch: () => void) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [focusMode, openCompose, onFocusSearch, selectedEmailId, setFocusMode, setSelectedEmailId]);
 }

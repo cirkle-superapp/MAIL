@@ -531,3 +531,64 @@ export async function aiImprove(input: {
   console.error("[aiImprove] no valid JSON from any model");
   return null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// AI PRIORITY SCORE — a 0-100 priority score per email
+// Outsmarts competitors: every email gets a smart priority score based on
+// sender, subject, body content, intent, and deadline signals. Displayed as
+// a color-coded badge so users instantly know what to tackle first.
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface PriorityResult {
+  score: number;        // 0-100 (0=ignore, 100=urgent)
+  level: "low" | "medium" | "high" | "urgent";
+  reasoning: string;    // 1-sentence why
+  confidence: number;   // 0-1
+}
+
+export async function aiPriority(email: {
+  fromName?: string;
+  fromEmail?: string;
+  subject?: string;
+  body?: string;
+  snippet?: string;
+  intent?: string;
+  isImportant?: boolean;
+  hasAttachment?: boolean;
+}): Promise<PriorityResult | null> {
+  const system = `You are an email triage assistant. Score the email's priority 0-100 based on:
+- Urgency (deadlines, time-sensitive language like "today", "tomorrow", "asap", "EOD")
+- Sender importance (known senders vs newsletters/promotions)
+- Action required (does this need a reply/decision/action?)
+- Impact (financial, legal, security, career implications)
+Return JSON: {"score": number, "level": "low"|"medium"|"high"|"urgent", "reasoning": "one short sentence", "confidence": 0-1}
+Score guide: 0-30 low (newsletter/ FYI), 31-60 medium (routine), 61-85 high (needs action soon), 86-100 urgent (deadline/important).`;
+
+  const content = `From: ${email.fromName ?? ""} <${email.fromEmail ?? ""}>
+Subject: ${email.subject ?? ""}
+Intent: ${email.intent ?? "unknown"}
+Important: ${email.isImportant ? "yes" : "no"}
+Attachment: ${email.hasAttachment ? "yes" : "no"}
+Body (first 800 chars): ${(email.body ?? email.snippet ?? "").slice(0, 800)}`;
+
+  const messages: Msg[] = [
+    { role: "system", content: system },
+    { role: "user", content },
+  ];
+
+  const responses = await multiModel(messages, generationModels(messages));
+  for (const r of responses) {
+    const parsed = extractJson<PriorityResult>(r.content);
+    if (parsed && typeof parsed.score === "number" && parsed.score >= 0 && parsed.score <= 100) {
+      const score = Math.round(parsed.score);
+      const level = score >= 86 ? "urgent" : score >= 61 ? "high" : score >= 31 ? "medium" : "low";
+      return {
+        score,
+        level,
+        reasoning: parsed.reasoning ?? "",
+        confidence: parsed.confidence ?? 0.7,
+      };
+    }
+  }
+  return null;
+}

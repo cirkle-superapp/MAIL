@@ -999,3 +999,35 @@ Work Log:
 
 Stage Summary:
 - The UI is now state-of-the-art: premium shimmer loading skeletons, Linear-style gradient accent bars on active sidebar items, spring-physics micro-interactions everywhere (slide-in-right, scale-in, slide-down, bounce-subtle, fade-in), tabular-nums for count stability, text-balance for headings. The sidebar is rated 9/10 by the VLM. All changes are CSS-only (className additions + new keyframes) — no logic changed, no functionality removed. Production live with backup tag v-state-of-art.
+
+---
+Task ID: CREATIVE-FEATURES-DETAIL-UI
+Agent: main (Z.ai Code)
+Task: Add three creative features (Focus mode toggle, TTS Listen button, AI Priority score badge) to the Email Detail view in email-detail.tsx — frontend only.
+
+Work Log:
+- Read worklog + existing email-detail.tsx (620 lines) + verified backend endpoints `/api/ai/priority` (POST {id} → {score,level,reasoning,confidence}) and `/api/tts` (POST {text,voice,speed} → audio/wav) + store `focusMode`/`setFocusMode` + mail-app already renders focus-mode layout with `<EmailDetail focusMode />`.
+- Updated React imports: added `useRef`.
+- Updated lucide-react imports: added `Maximize2`, `Volume2`, `Loader2`, `Gauge` to the existing icon block.
+- Added `import type { PriorityResult } from "@/lib/ai"` (verified the interface exists in src/lib/ai.ts).
+- Updated `EmailDetail` signature: `{ onBack }` → `{ onBack, focusMode }` with `focusMode?: boolean`.
+- Added store selector `const setFocusMode = useMailStore((s) => s.setFocusMode)`.
+- Added new state inside EmailDetail: `listening` (TTS playing), `audioRef` (HTMLAudioElement ref), `priority` (PriorityResult | null).
+- Added `useEffect` that POSTs to `/api/ai/priority` with `{ id: email.id }` on mount + on email change; cancels on cleanup; sets `priority` when the response carries `score`.
+- Added `handleListen` async function: toggles pause if already listening; otherwise strips HTML tags from `email.body`, slices first 1000 chars, POSTs to `/api/tts` with `{ text, voice: "tongtong", speed: 1.0 }`, turns the response into a Blob→object URL, plays it through the hidden `<audio>` element. Failures trigger a destructive toast + reset `listening`. `play()` rejection swallowed with `.catch(() => {})` so autoplay-policy rejections don't surface as errors.
+- Restructured the top of the EmailDetail return: now `{focusMode ? (minimal top bar) : (full premium toolbar)}`. The minimal top bar contains a Back button, the truncated subject (`h2`), and an "Exit Focus" button (`Maximize2` icon) calling `setFocusMode(false)` — all with tooltips. The full toolbar branch keeps every existing action (Archive, Delete, Mark unread, Snooze, Important, Label, Reply, Reply all, Forward, Smart follow-up, More dropdown) unchanged and ADDS two new `ActionBtn`s after the More dropdown: "Focus mode (press Z)" (`Maximize2`, calls `setFocusMode(true)`) and "Listen to this email (TTS)" (`Volume2` → `Loader2 animate-spin` while `listening`).
+- Inserted the AI priority badge right after the intent badge inside the subject row: `{priority && (<span ...><Gauge />{priority.score}</span>)}` with `cn()`-driven color classes per level (rose/orange/amber/muted). The whole row now renders when `email.intent || priority`, so the priority badge shows even for emails without an intent classification. The `title` attribute carries `priority.reasoning` for hover tooltip.
+- Widened the reading area in focus mode: outer wrapper changes `max-w-3xl`→`max-w-4xl` and `MessageView` accepts a `focusMode?: boolean` prop; the message body div switches `max-w-2xl`→`max-w-3xl` in focus mode via `cn(...)`.
+- Wrapped the sticky reply/forward footer in `{!focusMode && (...)}` so it disappears in focus mode (distraction-free reading). The per-message Reply/Forward buttons at the bottom of MessageView still render for `isLast` messages, so replying in focus mode stays one click away.
+- Added hidden `<audio ref={audioRef} onEnded={() => setListening(false)} />` at the end of EmailDetail's root div — TTS audio element lives across focus-mode toggles so playback continues uninterrupted.
+- Fix-up: noticed `src/hooks/use-keyboard-shortcuts.ts` (modified by the prior focus-mode setup task) was missing its closing `}` after the deps-array rewrite — lint was failing with "Parsing error: '}' expected". Added the missing brace so `bun run lint` passes clean.
+- Ran `bun run lint` → exits clean, no errors, no warnings.
+- Verified dev server log: `GET / 200`, page renders, no compile errors after edits.
+
+Stage Summary:
+- Three creative features are live in EmailDetail:
+  1. **Focus mode** — toolbar "Focus" button (Maximize2) + `z` keyboard shortcut enter focus; minimal top bar (Back + subject + "Exit Focus") shows in focus mode, full toolbar + sticky footer hidden, body widened (max-w-4xl outer / max-w-3xl message body).
+  2. **Listen (TTS readback)** — toolbar "Listen" button (Volume2 → Loader2 spinner while loading/playing) POSTs to `/api/tts` with HTML-stripped first 1000 chars of `email.body`, voice "tongtong", speed 1.0; plays WAV via hidden `<audio>`; click-again-to-pause; auto-resets `listening` on `ended`.
+  3. **AI Priority badge** — fetched on mount from `/api/ai/priority`, rendered as a colored pill (rose/orange/amber/muted by level) with `<Gauge/>` icon + numeric score, `title={reasoning}` for hover context. Placed right after the intent badge in the subject row.
+- All existing functionality preserved: Archive, Delete (Trash + Delete forever), Mark unread, Snooze/Unsnooze, Important toggle, Label add/remove, Reply, Reply all, Forward, Smart follow-up, Handle panel, Conversation panel, Quick Reply chips, Star button, More dropdown (Print), in-message Reply/Forward buttons — unchanged handler logic, only additive UI.
+- `bun run lint` passes clean (0 errors, 0 warnings).

@@ -30,6 +30,7 @@ export interface MailState {
   composeEmailId: string | null;
   searchInput: string;
   triageOpen: boolean;
+  focusMode: boolean;
   // actions
   setFolder: (f: Folder | SpecialView) => void;
   setSelectedLabel: (label: string | null) => void;
@@ -44,6 +45,7 @@ export interface MailState {
   openEditDraft: (emailId: string) => void;
   closeCompose: () => void;
   setTriageOpen: (v: boolean) => void;
+  setFocusMode: (v: boolean) => void;
 }
 
 export const useMailStore = create<MailState>((set) => ({
@@ -57,6 +59,7 @@ export const useMailStore = create<MailState>((set) => ({
   composeEmailId: null,
   searchInput: "",
   triageOpen: false,
+  focusMode: false,
   setFolder: (f) =>
     set((s) => ({
       folder: f,
@@ -82,4 +85,5 @@ export const useMailStore = create<MailState>((set) => ({
   closeCompose: () =>
     set({ composeOpen: false, composeMode: "new", composeEmailId: null }),
   setTriageOpen: (v) => set({ triageOpen: v }),
+  setFocusMode: (v) => set({ focusMode: v }),
 }));

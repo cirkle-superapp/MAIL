@@ -67,56 +67,70 @@ export function MailApp() {
     setSelectedEmailId(null);
   }
 
+  const focusMode = useMailStore((s) => s.focusMode);
+  const setFocusMode = useMailStore((s) => s.setFocusMode);
+
   return (
     <div className="flex h-screen flex-col bg-background">
-      <TopBar
-        onToggleSidebar={handleToggleSidebar}
-        sidebarOpen={isMobile ? mobileSidebarOpen : !sidebarCollapsed}
-      />
-
-      <div className="flex min-h-0 flex-1">
-        {/* Desktop push sidebar */}
-        {!isMobile && <Sidebar collapsed={sidebarCollapsed} />}
-
-        {/* Mobile sidebar drawer */}
-        {isMobile && (
-          <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-            <SheetContent
-              side="left"
-              className="w-72 p-0 sm:w-72"
-              onCloseAutoFocus={(e) => e.preventDefault()}
-            >
-              <SheetTitle className="sr-only">Navigation</SheetTitle>
-              <div className="h-full" onClick={() => setMobileSidebarOpen(false)}>
-                <Sidebar collapsed={false} />
-              </div>
-            </SheetContent>
-          </Sheet>
-        )}
-
-        {/* Middle + Right panes */}
-        <div className="flex min-w-0 flex-1">
-          {/* Email list — hidden on mobile when detail is open */}
-          <section
-            className={cn(
-              "min-w-0 flex-1 border-r border-border",
-              showDetail ? "hidden md:block md:flex-1" : "block"
-            )}
-          >
-            <EmailList onOpenEmail={() => {}} />
-          </section>
-
-          {/* Email detail — full screen on mobile, flex on desktop */}
-          <section
-            className={cn(
-              "min-w-0 flex-1",
-              showDetail ? "block" : "hidden md:block md:flex-1"
-            )}
-          >
-            <EmailDetail onBack={backToList} />
+      {/* Focus/Zen mode: hide the top bar + sidebar + list, show only the email detail full-width */}
+      {focusMode ? (
+        <div className="flex min-h-0 flex-1 animate-fade-in">
+          <section className="min-w-0 flex-1">
+            <EmailDetail onBack={() => { setFocusMode(false); backToList(); }} focusMode />
           </section>
         </div>
-      </div>
+      ) : (
+        <>
+          <TopBar
+            onToggleSidebar={handleToggleSidebar}
+            sidebarOpen={isMobile ? mobileSidebarOpen : !sidebarCollapsed}
+          />
+
+          <div className="flex min-h-0 flex-1">
+            {/* Desktop push sidebar */}
+            {!isMobile && <Sidebar collapsed={sidebarCollapsed} />}
+
+            {/* Mobile sidebar drawer */}
+            {isMobile && (
+              <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+                <SheetContent
+                  side="left"
+                  className="w-72 p-0 sm:w-72"
+                  onCloseAutoFocus={(e) => e.preventDefault()}
+                >
+                  <SheetTitle className="sr-only">Navigation</SheetTitle>
+                  <div className="h-full" onClick={() => setMobileSidebarOpen(false)}>
+                    <Sidebar collapsed={false} />
+                  </div>
+                </SheetContent>
+              </Sheet>
+            )}
+
+            {/* Middle + Right panes */}
+            <div className="flex min-w-0 flex-1">
+              {/* Email list — hidden on mobile when detail is open */}
+              <section
+                className={cn(
+                  "min-w-0 flex-1 border-r border-border",
+                  showDetail ? "hidden md:block md:flex-1" : "block"
+                )}
+              >
+                <EmailList onOpenEmail={() => {}} />
+              </section>
+
+              {/* Email detail — full screen on mobile, flex on desktop */}
+              <section
+                className={cn(
+                  "min-w-0 flex-1",
+                  showDetail ? "block" : "hidden md:block md:flex-1"
+                )}
+              >
+                <EmailDetail onBack={backToList} />
+              </section>
+            </div>
+          </div>
+        </>
+      )}
 
       <ComposeDialog />
       <ShortcutsHelpDialog />

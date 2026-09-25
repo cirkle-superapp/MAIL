@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Archive,
@@ -17,6 +17,10 @@ import {
   Sparkles,
   Pencil,
   Zap,
+  Maximize2,
+  Volume2,
+  Loader2,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -56,22 +60,33 @@ import {
   type Intent,
 } from "@/lib/email-utils";
 import type { Email } from "@/lib/types";
+import type { PriorityResult } from "@/lib/ai";
 
 export function EmailDetail({
   onBack,
+  focusMode,
 }: {
   onBack: () => void;
+  focusMode?: boolean;
 }) {
   const id = useMailStore((s) => s.selectedEmailId);
   const openCompose = useMailStore((s) => s.openCompose);
   const openReply = useMailStore((s) => s.openReply);
   const openReplyAll = useMailStore((s) => s.openReplyAll);
   const openForward = useMailStore((s) => s.openForward);
+  const setFocusMode = useMailStore((s) => s.setFocusMode);
   const { data, isLoading } = useEmailDetail(id);
   const invalidate = useInvalidateMail();
 
   const email = data?.email;
   const thread = data?.thread;
+
+  // Voice readback (TTS) state — powers the "Listen" toolbar button
+  const [listening, setListening] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // AI priority score (0-100, low/medium/high/urgent) — fetched on mount
+  const [priority, setPriority] = useState<PriorityResult | null>(null);
 
   // Auto mark-as-read when an unread email is opened
   useEffect(() => {
@@ -84,6 +99,26 @@ export function EmailDetail({
     })
       .then(() => {
         if (!cancelled) invalidate();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [email?.id]);
+
+  // Fetch AI priority score on mount + whenever the open email changes
+  useEffect(() => {
+    if (!email) return;
+    let cancelled = false;
+    setPriority(null);
+    fetch("/api/ai/priority", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: email.id }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d && d.score !== undefined) setPriority(d);
       })
       .catch(() => {});
     return () => {
@@ -153,6 +188,41 @@ export function EmailDetail({
       toast({ title: "Undo: restored", duration: 1500 });
     } catch {
       toast({ title: "Undo failed", variant: "destructive" });
+    }
+  }
+
+  // Voice readback via TTS — fetch a WAV from /api/tts and play through a
+  // hidden <audio>. Click again while playing to stop.
+  async function handleListen() {
+    if (!email) return;
+    if (listening && audioRef.current) {
+      audioRef.current.pause();
+      setListening(false);
+      return;
+    }
+    try {
+      setListening(true);
+      // Strip HTML tags from the body for TTS (first 1000 chars)
+      const text = email.body
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 1000);
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice: "tongtong", speed: 1.0 }),
+      });
+      if (!res.ok) throw new Error("TTS failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        await audioRef.current.play().catch(() => {});
+      }
+    } catch {
+      toast({ title: "Voice readback failed", variant: "destructive" });
+      setListening(false);
     }
   }
 
@@ -244,100 +314,150 @@ export function EmailDetail({
 
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* Premium glass action toolbar */}
-      <div className="glass flex h-14 items-center gap-1 border-b border-border/40 px-2 backdrop-blur-md sm:px-4 animate-spring-in">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="btn-premium h-8 w-8 rounded-full transition-all duration-200 hover:scale-110"
-                onClick={onBack}
-                aria-label="Back to list"
-              >
-                <ArrowLeft className="h-[1.1rem] w-[1.1rem]" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Back</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <div className="mx-1 h-5 w-px bg-border/40" />
-        <ActionBtn label="Archive" onClick={archive}>
-          <Archive className="h-[1.05rem] w-[1.05rem]" />
-        </ActionBtn>
-        {isTrash ? (
-          <ActionBtn label="Delete forever" onClick={deleteForever} danger>
-            <Trash2 className="h-[1.05rem] w-[1.05rem]" />
+      {/* Focus mode: minimal top bar (distraction-free reading); otherwise the full premium toolbar */}
+      {focusMode ? (
+        <div className="glass flex h-14 items-center gap-2 border-b border-border/40 px-3 backdrop-blur-md sm:px-6 animate-spring-in">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="btn-premium h-8 w-8 rounded-full transition-all duration-200 hover:scale-110"
+                  onClick={onBack}
+                  aria-label="Back to list"
+                >
+                  <ArrowLeft className="h-[1.1rem] w-[1.1rem]" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Back</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <h2 className="flex-1 truncate px-2 font-display text-sm font-medium tracking-tight text-foreground">
+            {email.subject || "(no subject)"}
+          </h2>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="btn-premium h-8 rounded-full px-4"
+                  onClick={() => setFocusMode(false)}
+                  aria-label="Exit focus mode"
+                >
+                  <Maximize2 className="mr-2 h-3.5 w-3.5" /> Exit Focus
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Exit focus mode (press Z)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      ) : (
+        <div className="glass flex h-14 items-center gap-1 border-b border-border/40 px-2 backdrop-blur-md sm:px-4 animate-spring-in">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="btn-premium h-8 w-8 rounded-full transition-all duration-200 hover:scale-110"
+                  onClick={onBack}
+                  aria-label="Back to list"
+                >
+                  <ArrowLeft className="h-[1.1rem] w-[1.1rem]" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Back</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <div className="mx-1 h-5 w-px bg-border/40" />
+          <ActionBtn label="Archive" onClick={archive}>
+            <Archive className="h-[1.05rem] w-[1.05rem]" />
           </ActionBtn>
-        ) : (
-          <ActionBtn label="Delete" onClick={trash}>
-            <Trash2 className="h-[1.05rem] w-[1.05rem]" />
+          {isTrash ? (
+            <ActionBtn label="Delete forever" onClick={deleteForever} danger>
+              <Trash2 className="h-[1.05rem] w-[1.05rem]" />
+            </ActionBtn>
+          ) : (
+            <ActionBtn label="Delete" onClick={trash}>
+              <Trash2 className="h-[1.05rem] w-[1.05rem]" />
+            </ActionBtn>
+          )}
+          <ActionBtn label="Mark unread" onClick={markUnread}>
+            <MailOpen className="h-[1.05rem] w-[1.05rem]" />
           </ActionBtn>
-        )}
-        <ActionBtn label="Mark unread" onClick={markUnread}>
-          <MailOpen className="h-[1.05rem] w-[1.05rem]" />
-        </ActionBtn>
-        <SnoozeMenu
-          onSnooze={snooze}
-          onUnsnooze={unsnooze}
-          isSnoozed={isSnoozed}
-          snoozedUntil={email.snoozedUntil}
-          className="btn-premium h-8 w-8 rounded-full p-0 gap-0"
-        />
-        <ActionBtn
-          label={email.isImportant ? "Remove importance" : "Mark important"}
-          onClick={toggleImportant}
-        >
-          <AlertCircle
-            className={cn(
-              "h-[1.05rem] w-[1.05rem]",
-              email.isImportant && "text-accent"
-            )}
+          <SnoozeMenu
+            onSnooze={snooze}
+            onUnsnooze={unsnooze}
+            isSnoozed={isSnoozed}
+            snoozedUntil={email.snoozedUntil}
+            className="btn-premium h-8 w-8 rounded-full p-0 gap-0"
           />
-        </ActionBtn>
-        <LabelMenu
-          activeLabels={new Set(splitLabels(email.labels))}
-          onToggle={(label, checked) =>
-            checked ? applyLabel(label) : removeLabel(label)
-          }
-          className="btn-premium h-8 w-8 rounded-full p-0 gap-0"
-        />
-        <div className="mx-1 h-5 w-px bg-border/40" />
-        <ActionBtn label="Reply" onClick={() => openReply(email.id)}>
-          <Reply className="h-[1.05rem] w-[1.05rem]" />
-        </ActionBtn>
-        <ActionBtn label="Reply all" onClick={() => openReplyAll(email.id)}>
-          <ReplyAll className="h-[1.05rem] w-[1.05rem]" />
-        </ActionBtn>
-        <ActionBtn label="Forward" onClick={() => openForward(email.id)}>
-          <Forward className="h-[1.05rem] w-[1.05rem]" />
-        </ActionBtn>
-        {email.folder === "SENT" && (
-          <ActionBtn label="Smart follow-up" onClick={handleFollowUp} premium>
-            <Sparkles className="h-[1.05rem] w-[1.05rem]" />
+          <ActionBtn
+            label={email.isImportant ? "Remove importance" : "Mark important"}
+            onClick={toggleImportant}
+          >
+            <AlertCircle
+              className={cn(
+                "h-[1.05rem] w-[1.05rem]",
+                email.isImportant && "text-accent"
+              )}
+            />
           </ActionBtn>
-        )}
-        <div className="mx-1 h-5 w-px bg-border/40" />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="btn-premium h-8 w-8 rounded-full" aria-label="More">
-              <MoreVertical className="h-[1.05rem] w-[1.05rem]" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={markUnread}>
-              <MailOpen className="mr-2 h-4 w-4" /> Mark as unread
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => window.print()}>
-              <Printer className="mr-2 h-4 w-4" /> Print
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+          <LabelMenu
+            activeLabels={new Set(splitLabels(email.labels))}
+            onToggle={(label, checked) =>
+              checked ? applyLabel(label) : removeLabel(label)
+            }
+            className="btn-premium h-8 w-8 rounded-full p-0 gap-0"
+          />
+          <div className="mx-1 h-5 w-px bg-border/40" />
+          <ActionBtn label="Reply" onClick={() => openReply(email.id)}>
+            <Reply className="h-[1.05rem] w-[1.05rem]" />
+          </ActionBtn>
+          <ActionBtn label="Reply all" onClick={() => openReplyAll(email.id)}>
+            <ReplyAll className="h-[1.05rem] w-[1.05rem]" />
+          </ActionBtn>
+          <ActionBtn label="Forward" onClick={() => openForward(email.id)}>
+            <Forward className="h-[1.05rem] w-[1.05rem]" />
+          </ActionBtn>
+          {email.folder === "SENT" && (
+            <ActionBtn label="Smart follow-up" onClick={handleFollowUp} premium>
+              <Sparkles className="h-[1.05rem] w-[1.05rem]" />
+            </ActionBtn>
+          )}
+          <div className="mx-1 h-5 w-px bg-border/40" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="btn-premium h-8 w-8 rounded-full" aria-label="More">
+                <MoreVertical className="h-[1.05rem] w-[1.05rem]" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={markUnread}>
+                <MailOpen className="mr-2 h-4 w-4" /> Mark as unread
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => window.print()}>
+                <Printer className="mr-2 h-4 w-4" /> Print
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ActionBtn label="Focus mode (press Z)" onClick={() => setFocusMode(true)}>
+            <Maximize2 className="h-[1.05rem] w-[1.05rem]" />
+          </ActionBtn>
+          <ActionBtn label="Listen to this email (TTS)" onClick={handleListen}>
+            {listening ? (
+              <Loader2 className="h-[1.05rem] w-[1.05rem] animate-spin" />
+            ) : (
+              <Volume2 className="h-[1.05rem] w-[1.05rem]" />
+            )}
+          </ActionBtn>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-2 py-5 sm:px-8">
+        <div className={cn("mx-auto px-2 py-5 sm:px-8", focusMode ? "max-w-4xl" : "max-w-3xl")}>
           {/* Premium letterhead — subject + AI panels + labels */}
           <div className="card-premium rounded-2xl p-5 m-2 sm:m-6 animate-spring-in stagger-1">
             {/* Subject */}
@@ -351,17 +471,34 @@ export function EmailDetail({
                 size="md"
               />
             </div>
-            {/* Intent badge + HANDLE email (§16) */}
-            {email.intent ? (
+            {/* Intent badge + AI priority score + reading time */}
+            {email.intent || priority ? (
               <div className="mt-2 flex items-center gap-2">
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-soft",
-                    INTENT_COLORS[email.intent as Intent] ?? INTENT_COLORS.FYI
-                  )}
-                >
-                  {INTENT_LABELS[email.intent as Intent] ?? email.intent}
-                </span>
+                {email.intent && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-soft",
+                      INTENT_COLORS[email.intent as Intent] ?? INTENT_COLORS.FYI
+                    )}
+                  >
+                    {INTENT_LABELS[email.intent as Intent] ?? email.intent}
+                  </span>
+                )}
+                {priority && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                      priority.level === "urgent" && "bg-rose-500/15 text-rose-600 dark:text-rose-300",
+                      priority.level === "high" && "bg-orange-500/15 text-orange-600 dark:text-orange-300",
+                      priority.level === "medium" && "bg-amber-500/15 text-amber-600 dark:text-amber-300",
+                      priority.level === "low" && "bg-muted text-muted-foreground"
+                    )}
+                    title={priority.reasoning}
+                  >
+                    <Gauge className="h-3 w-3" />
+                    {priority.score}
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                   <Clock className="h-3 w-3" />
                   {readingTime(email.body)} read
@@ -414,36 +551,41 @@ export function EmailDetail({
                 isThreaded={isThreaded}
                 onReply={() => openReply(msg.id)}
                 onForward={() => openForward(msg.id)}
+                focusMode={focusMode}
               />
             ))}
           </div>
         </div>
       </div>
 
-      {/* Premium reply/forward buttons (sticky footer at bottom of pane) */}
-      <div className="glass flex h-12 items-center gap-2 border-t border-border/40 bg-background/60 px-3 backdrop-blur-md sm:px-6 animate-spring-in">
-        <Button
-          variant="outline"
-          className="btn-premium h-9 rounded-full border-transparent bg-gradient-gold px-5 text-charcoal font-medium hover:opacity-90"
-          onClick={() => openReply(email.id)}
-        >
-          <Reply className="mr-2 h-4 w-4" /> Reply
-        </Button>
-        <Button
-          variant="outline"
-          className="btn-premium glass h-9 rounded-full px-5 shadow-soft"
-          onClick={() => openReplyAll(email.id)}
-        >
-          <ReplyAll className="mr-2 h-4 w-4" /> Reply all
-        </Button>
-        <Button
-          variant="outline"
-          className="btn-premium glass h-9 rounded-full px-5 shadow-soft"
-          onClick={() => openForward(email.id)}
-        >
-          <Forward className="mr-2 h-4 w-4" /> Forward
-        </Button>
-      </div>
+      {/* Premium reply/forward buttons (sticky footer — hidden in focus mode) */}
+      {!focusMode && (
+        <div className="glass flex h-12 items-center gap-2 border-t border-border/40 bg-background/60 px-3 backdrop-blur-md sm:px-6 animate-spring-in">
+          <Button
+            variant="outline"
+            className="btn-premium h-9 rounded-full border-transparent bg-gradient-gold px-5 text-charcoal font-medium hover:opacity-90"
+            onClick={() => openReply(email.id)}
+          >
+            <Reply className="mr-2 h-4 w-4" /> Reply
+          </Button>
+          <Button
+            variant="outline"
+            className="btn-premium glass h-9 rounded-full px-5 shadow-soft"
+            onClick={() => openReplyAll(email.id)}
+          >
+            <ReplyAll className="mr-2 h-4 w-4" /> Reply all
+          </Button>
+          <Button
+            variant="outline"
+            className="btn-premium glass h-9 rounded-full px-5 shadow-soft"
+            onClick={() => openForward(email.id)}
+          >
+            <Forward className="mr-2 h-4 w-4" /> Forward
+          </Button>
+        </div>
+      )}
+      {/* Hidden audio element for TTS voice readback (powered by /api/tts) */}
+      <audio ref={audioRef} onEnded={() => setListening(false)} />
     </div>
   );
 }
@@ -494,12 +636,14 @@ function MessageView({
   isThreaded,
   onReply,
   onForward,
+  focusMode,
 }: {
   email: Email;
   isLast: boolean;
   isThreaded: boolean;
   onReply: () => void;
   onForward: () => void;
+  focusMode?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const showCollapsed = isThreaded && !isLast;
@@ -576,7 +720,10 @@ function MessageView({
       </div>
 
       <div
-        className="card-premium m-4 mt-2 max-w-2xl mx-auto rounded-2xl p-5 text-sm leading-relaxed text-foreground/90 animate-fade-up stagger-2 prose prose-sm dark:prose-invert [&_*]:text-foreground/90 sm:m-6 sm:p-6 [&_a]:text-accent [&_a:hover]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_table]:border-collapse [&_td]:border [&_td]:border-border/50 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border/50 [&_th]:px-2 [&_th]:py-1"
+        className={cn(
+          "card-premium m-4 mt-2 mx-auto rounded-2xl p-5 text-sm leading-relaxed text-foreground/90 animate-fade-up stagger-2 prose prose-sm dark:prose-invert [&_*]:text-foreground/90 sm:m-6 sm:p-6 [&_a]:text-accent [&_a:hover]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_table]:border-collapse [&_td]:border [&_td]:border-border/50 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border/50 [&_th]:px-2 [&_th]:py-1",
+          focusMode ? "max-w-3xl" : "max-w-2xl"
+        )}
         dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.body) }}
       />
 
