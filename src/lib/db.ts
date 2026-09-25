@@ -1,15 +1,18 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { createClient } from "@libsql/client";
 
 /**
  * Prisma Client — works for both local SQLite (file:) and Turso (libsql://).
  *
  * - Local dev:  DATABASE_URL="file:/abs/path/to.db"
- *   → uses Prisma's default SQLite engine (no adapter needed)
+ *   → uses Prisma's default SQLite engine (no adapter)
  * - Production: DATABASE_URL="libsql://<turso-host>"  + TURSO_TOKEN
  *   → uses the @prisma/adapter-libsql driver adapter for Turso
  *
- * The same lib/db.ts handles both — it inspects the URL scheme and wires the
- * adapter only when the URL is a remote libsql:// connection.
+ * The schema.prisma has `previewFeatures = ["driverAdapters"]` which lets the
+ * adapter bypass the default datasource URL validation (so libsql:// URLs are
+ * accepted with the sqlite provider).
  */
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -23,15 +26,13 @@ function createPrismaClient() {
     );
   }
 
-  const isRemote = url.startsWith("libsql://") || url.startsWith("https://") || url.startsWith("http://");
+  const isRemote =
+    url.startsWith("libsql://") ||
+    url.startsWith("https://") ||
+    url.startsWith("http://");
 
-  // Remote (Turso/Neon libSQL) → use the driver adapter
+  // Remote (Turso libSQL) → driver adapter
   if (isRemote) {
-    // Lazy-import the adapter so the dependency is only loaded when needed.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { PrismaLibSql } = require("@prisma/adapter-libsql");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createClient } = require("@libsql/client");
     const libsql = createClient({
       url,
       authToken: process.env.TURSO_TOKEN || undefined,
