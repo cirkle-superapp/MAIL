@@ -1,6 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { createClient } from "@libsql/client";
+import { PrismaLibSQL } from "@prisma/adapter-libsql";
 
 /**
  * Prisma Client — works for both local SQLite (file:) and Turso (libsql://).
@@ -31,13 +30,14 @@ function createPrismaClient() {
     url.startsWith("https://") ||
     url.startsWith("http://");
 
-  // Remote (Turso libSQL) → driver adapter
+  // Remote (Turso libSQL) → driver adapter.
+  // PrismaLibSQL is a FACTORY that takes a config object { url, authToken },
+  // not a client instance. It creates the @libsql/client internally on connect().
   if (isRemote) {
-    const libsql = createClient({
+    const adapter = new PrismaLibSQL({
       url,
       authToken: process.env.TURSO_TOKEN || undefined,
     });
-    const adapter = new PrismaLibSql(libsql);
     return new PrismaClient({
       log: process.env.NODE_ENV !== "production" ? ["query"] : ["error"],
       adapter,
