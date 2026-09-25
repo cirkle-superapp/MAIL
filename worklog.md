@@ -905,3 +905,37 @@ Work Log:
 
 Stage Summary:
 - VLM-guided UI upscale complete across all 3 primary views. The Command Center is now dashboard-density (not landing-page airy), the email list is more scannable (compact badges + overflow label chips + freed snippet space), and the email detail has grouped toolbar actions + a reading-width body. The empty state is now actionable (Compose + Triage). VLM ratings: 7-9/10 across hierarchy/density/polish for all views. Production live on cirkle-mail.vercel.app.
+
+---
+Task ID: COO-CTO-CFO-PM-FINAL-VERIFY
+Agent: main (Z.ai Code) — COO + CTO + CFO + PM
+Task: Final verification — backup, harden, verify all 5 services connected, screenshot proof
+
+Work Log:
+- **Git sync verified**: local HEAD = f0152bc = remote HEAD (in sync, no rollback). Working tree clean. Previous turn's `git reset --hard origin/main` restored the local repo from the stale 44c403e state to the latest f0152bc (which has the hydration fix + Neon-primary architecture + UI upscale).
+- **Audit — nothing essential deleted**: 20 API routes (all present), 26 mail components, 8 lib files (ai/db/email-utils/inngest/seed-data/turso-setup/types/utils), 6 store+hooks files, 2 scripts (seed-neon/seed-turso), all docs+config (DEPLOY.md/vercel.json/.env.example/.gitignore/prisma/schema.prisma). The only intentional modifications: prisma provider sqlite→postgresql (Neon pivot), lib/db.ts adapter→plain PrismaClient, command-center greeting fix (useSyncExternalStore), UI upscale (rounded-2xl→xl, smaller greeting, denser cards). All features preserved.
+- **Backup created**: git tag `v-production-stable` (annotated) pointing to f0152bc, pushed to GitHub. Marks the known-good production state.
+- **Hardened structure**:
+  - Branch protection on `main` enabled: required_linear_history=true, allow_force_pushes=false (prevents accidental rollback via force push).
+  - .gitignore verified: covers .env*, node_modules, .next, dev.log, /db/, tool-results/, prisma/*.db.
+  - Secret scan: no actual secrets tracked (worklog.md only contains text references to scan patterns like "ghp_"/"vcp_" in descriptions, already redacted).
+- **All 5 services verified connected and working in harmony**:
+  - **GitHub**: main=f0152bc, branch protected, tag v-production-stable pushed.
+  - **Vercel**: production deployment READY from f0152bc, alias cirkle-mail.vercel.app. All 5 env vars set (DATABASE_URL, TURSO_TOKEN, NEON_DATABASE_URL, INNGEST_SIGN_KEY, CRON_SECRET).
+  - **Neon (PRIMARY)**: 20 emails, 6 labels, by folder INBOX:13/SENT:3/SPAM:2/TRASH:1/DRAFTS:1. Queried directly via @neondatabase/serverless.
+  - **Turso (BACKUP)**: 20 emails, 6 labels, same distribution. In sync with Neon. Queried via @libsql/client.
+  - **Inngest**: /api/inngest returns 401 (alive, auth-checking via INNGEST_SIGN_KEY). Route serves the deliverScheduledEmails cron function.
+  - **Vercel Cron**: /api/cron/deliver returns 401 (alive, CRON_SECRET-guarded). vercel.json declares 0 0 * * * (daily, Hobby-compatible).
+- **Production API verification**: 7/8 endpoints return 200 (/api/emails, /api/emails/stats, /api/labels, /api/contacts, /api/commitments, /api/analytics [source:neon], /api/ai/briefing). The 8th (/api/cron/deliver) returns 401 (correct — CRON_SECRET-guarded). VLM confirmed the production Command Center shows real Neon data (4 Needs attention, 1 Needs reply, 3 Waiting on).
+- **8 screenshots captured** as deployment proof:
+  - 00-prod-full-app.png — production Command Center with real Neon data
+  - 01-prod-command-center.png — Command Center detail
+  - 02-prod-inbox.png — Inbox with email list from Neon
+  - 03-prod-email-detail.png — Email detail from Neon
+  - 04-prod-analytics.png — Analytics view (Neon direct connection, source:neon)
+  - 04-github-commits.png — GitHub commits page
+  - 05-github-tags.png — GitHub tags page showing v-production-stable
+  - 06-github-branch-protection.png — branch protection settings
+
+Stage Summary:
+- ALL 5 services (GitHub + Vercel + Neon + Turso + Inngest) are connected, deployed, and working in harmony. Local and remote git are in sync at f0152bc (no rollback). Backup tag v-production-stable pushed. Branch protection enabled (no force pushes to main). Nothing essential deleted or removed (20 routes, 26 components, 8 lib, 6 store/hooks, 2 scripts, all docs — all intact). 8 screenshots captured as deployment proof. Production live on https://cirkle-mail.vercel.app with real data from Neon, analytics from Neon direct, Inngest route serving functions, Vercel Cron backup ready.
