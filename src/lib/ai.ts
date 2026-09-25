@@ -1,20 +1,12 @@
-import ZAI from "z-ai-web-dev-sdk";
-
 /* ═══════════════════════════════════════════════════════════════════════════
    Cirkle (دواير) AI — Multi-Model Consensus Layer
-   Calls multiple LLMs in parallel (OpenRouter multi-model + z-ai SDK) and
-   uses consensus (majority vote for classification, best-confidence for
-   generation). Every output is source-grounded. Graceful fallback to the
-   z-ai SDK if external providers are unavailable (§44).
+   Calls multiple LLMs in parallel (OpenRouter + Groq + NVIDIA + Gemini +
+   HuggingFace) and uses consensus (majority vote for classification,
+   best-confidence for generation). Every output is source-grounded.
+   Sequential failover ensures generation tasks always get a result.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 // ─── Provider calling layer ─────────────────────────────────────────────────
-
-let zaiInstance: ZAI | null = null;
-async function getZai(): Promise<ZAI> {
-  if (!zaiInstance) zaiInstance = await ZAI.create();
-  return zaiInstance;
-}
 
 type Msg = { role: "assistant" | "user" | "system"; content: string };
 
@@ -50,20 +42,6 @@ async function callOpenRouter(
     return null;
   } finally {
     clearTimeout(timer);
-  }
-}
-
-/** Call the z-ai SDK. Returns the raw content or null. */
-async function callZai(messages: Msg[]): Promise<string | null> {
-  try {
-    const zai = await getZai();
-    const completion = await zai.chat.completions.create({
-      messages,
-      thinking: { type: "disabled" },
-    });
-    return completion.choices?.[0]?.message?.content ?? null;
-  } catch {
-    return null;
   }
 }
 
@@ -214,7 +192,7 @@ async function multiModel(
  * Used as a FALLBACK when multiModel() returns empty (all models failed
  * in parallel). This ensures generation tasks ALWAYS get a result — if the
  * primary model is down, the next provider is tried, then the next, etc.
- * The z-ai SDK is always last (it's the always-available built-in fallback).
+ * HuggingFace is last (the most accessible provider for sequential failover).
  *
  * Returns the first non-null response, or null if ALL models fail.
  */
@@ -249,7 +227,7 @@ async function generateWithFailover(
   const responses = await multiModel(messages, models);
   if (responses.length > 0) {
     // Return the first response (the generationModels list is ordered by
-    // preference — deepseek-chat first, then Groq, NVIDIA, Gemini, z-ai)
+    // preference — deepseek-chat first, then Groq, NVIDIA, Gemini, HuggingFace)
     return responses[0];
   }
   // 2. Sequential failover — try each model one at a time
@@ -257,10 +235,10 @@ async function generateWithFailover(
 }
 
 /**
- * Consensus models for classification — 8 models across 6 providers for
+ * Consensus models for classification — 8 models across 5 providers for
  * maximum diversity + majority-vote accuracy. Fast models (≤20s timeout).
  * Each provider adds architectural diversity (Llama, Qwen, DeepSeek, Gemini,
- * Nemotron, z-ai) so no single model's bias dominates.
+ * Nemotron) so no single model's bias dominates.
  */
 function classifyModels(messages: Msg[]): Array<{ name: string; call: () => Promise<string | null> }> {
   return [
@@ -277,15 +255,14 @@ function classifyModels(messages: Msg[]): Array<{ name: string; call: () => Prom
     { name: "gemini-1.5-flash", call: () => callGemini("gemini-1.5-flash", messages, 15000) },
     // HuggingFace (1 model)
     { name: "hf-llama-3.2-3b", call: () => callHuggingFace("meta-llama/Llama-3.2-3B-Instruct", messages, 20000) },
-    // z-ai SDK (always-available built-in fallback)
-    { name: "z-ai", call: () => callZai(messages) },
   ];
 }
 
 /**
  * Generation models — 5 models across 5 providers for best-confidence pick.
  * Larger/better-reasoning models (higher timeouts). The result with the
- * highest confidence wins.
+ * highest confidence wins. Sequential failover ensures a result even if
+ * all parallel calls fail.
  */
 function generationModels(messages: Msg[]): Array<{ name: string; call: () => Promise<string | null> }> {
   return [
@@ -293,7 +270,7 @@ function generationModels(messages: Msg[]): Array<{ name: string; call: () => Pr
     { name: "groq-llama-3.3-70b", call: () => callGroq("llama-3.3-70b-versatile", messages, 20000) },
     { name: "nv-nemotron-70b", call: () => callNvidia("nvidia/llama-3.1-nemotron-70b-instruct", messages, 25000) },
     { name: "gemini-1.5-pro", call: () => callGemini("gemini-1.5-pro", messages, 25000) },
-    { name: "z-ai", call: () => callZai(messages) },
+    { name: "hf-llama-3.2-3b", call: () => callHuggingFace("meta-llama/Llama-3.2-3B-Instruct", messages, 25000) },
   ];
 }
 
@@ -602,7 +579,7 @@ export async function aiFollowUp(input: {
   // Use fast models for follow-up
   const responses = await multiModel(messages, [
     { name: "llama-3.1-8b", call: () => callOpenRouter("meta-llama/llama-3.1-8b-instruct", messages, 15000) },
-    { name: "z-ai", call: () => callZai(messages) },
+    { name: "groq-llama-3.1-8b", call: () => callGroq("llama-3.1-8b-instant", messages, 15000) },
   ]);
   let best: { draft: string; confidence: number } | null = null;
   for (const r of responses) {
@@ -636,7 +613,7 @@ export async function aiInterpretCommand(command: string): Promise<{
   ];
   const responses = await multiModel(messages, [
     { name: "llama-3.1-8b", call: () => callOpenRouter("meta-llama/llama-3.1-8b-instruct", messages, 15000) },
-    { name: "z-ai", call: () => callZai(messages) },
+    { name: "groq-llama-3.1-8b", call: () => callGroq("llama-3.1-8b-instant", messages, 15000) },
   ]);
   let best: { action: string; query?: string; view?: string; answer?: string; confidence: number } | null = null;
   for (const r of responses) {
@@ -674,7 +651,7 @@ export async function aiQuickReplies(email: {
   ];
   const responses = await multiModel(messages, [
     { name: "llama-3.1-8b", call: () => callOpenRouter("meta-llama/llama-3.1-8b-instruct", messages, 15000) },
-    { name: "z-ai", call: () => callZai(messages) },
+    { name: "groq-llama-3.1-8b", call: () => callGroq("llama-3.1-8b-instant", messages, 15000) },
   ]);
   for (const r of responses) {
     const parsed = extractJson<Array<{ text?: string; tone?: string }>>(r.content);
@@ -698,7 +675,7 @@ export async function aiImproveSubject(draft: string): Promise<string[] | null> 
   ];
   const responses = await multiModel(messages, [
     { name: "llama-3.1-8b", call: () => callOpenRouter("meta-llama/llama-3.1-8b-instruct", messages, 12000) },
-    { name: "z-ai", call: () => callZai(messages) },
+    { name: "groq-llama-3.1-8b", call: () => callGroq("llama-3.1-8b-instant", messages, 15000) },
   ]);
   for (const r of responses) {
     const parsed = extractJson<string[]>(r.content);
@@ -734,7 +711,7 @@ export async function aiImprove(input: {
   ];
   const responses = await multiModel(messages, [
     { name: "deepseek", call: () => callOpenRouter("deepseek/deepseek-chat", messages, 20000) },
-    { name: "z-ai", call: () => callZai(messages) },
+    { name: "groq-llama-3.1-8b", call: () => callGroq("llama-3.1-8b-instant", messages, 15000) },
   ]);
   let best: { text: string; confidence: number } | null = null;
   for (const r of responses) {
@@ -808,24 +785,22 @@ Body (first 800 chars): ${(email.body ?? email.snippet ?? "").slice(0, 800)}`;
       };
     }
   }
-  // Fallback: if the multi-model consensus didn't return valid JSON, try the
-  // z-ai SDK alone (always available). Some external providers may fail from
-  // Vercel's serverless IPs — this ensures the priority score always works.
-  try {
-    const zaiRaw = await callZai(messages);
-    if (zaiRaw) {
-      const parsed = extractJson<PriorityResult>(zaiRaw);
-      if (parsed && typeof parsed.score === "number" && parsed.score >= 0 && parsed.score <= 100) {
-        const score = Math.round(parsed.score);
-        const level = score >= 86 ? "urgent" : score >= 61 ? "high" : score >= 31 ? "medium" : "low";
-        return {
-          score,
-          level,
-          reasoning: parsed.reasoning ?? "",
-          confidence: parsed.confidence ?? 0.5,
-        };
-      }
+  // Fallback: if the multi-model consensus didn't return valid JSON, try
+  // sequential failover (each model one at a time). If that also fails, the
+  // route handler falls back to a deterministic score (intent + flags).
+  const fb = await callWithFailover(generationModels(messages));
+  if (fb) {
+    const parsed = extractJson<PriorityResult>(fb.content);
+    if (parsed && typeof parsed.score === "number" && parsed.score >= 0 && parsed.score <= 100) {
+      const score = Math.round(parsed.score);
+      const level = score >= 86 ? "urgent" : score >= 61 ? "high" : score >= 31 ? "medium" : "low";
+      return {
+        score,
+        level,
+        reasoning: parsed.reasoning ?? "",
+        confidence: parsed.confidence ?? 0.5,
+      };
     }
-  } catch {}
+  }
   return null;
 }

@@ -72,7 +72,6 @@
         "tailwindcss-animate": "^1.0.7",
         "uuid": "^11.1.0",
         "vaul": "^1.1.2",
-        "z-ai-web-dev-sdk": "^0.0.18",
         "zod": "^4.0.2",
         "zustand": "^5.0.6",
       },
@@ -2219,8 +2218,6 @@
     "yjs": ["yjs@13.6.29", "", { "dependencies": { "lib0": "^0.2.99" } }, ""],
 
     "yocto-queue": ["yocto-queue@0.1.0", "", {}, ""],
-
-    "z-ai-web-dev-sdk": ["z-ai-web-dev-sdk@0.0.18", "", { "bin": { "z-ai": "dist/cli.js", "z-ai-generate": "dist/cli.js" } }, ""],
 
     "zod": ["zod@4.3.5", "", {}, ""],
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Archive,
@@ -83,7 +83,6 @@ export function EmailDetail({
 
   // Voice readback (TTS) state — powers the "Listen" toolbar button
   const [listening, setListening] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // AI priority score (0-100, low/medium/high/urgent) — fetched on mount
   const [priority, setPriority] = useState<PriorityResult | null>(null);
@@ -191,35 +190,36 @@ export function EmailDetail({
     }
   }
 
-  // Voice readback via TTS — fetch a WAV from /api/tts and play through a
-  // hidden <audio>. Click again while playing to stop.
-  async function handleListen() {
+  // Voice readback via the browser's built-in SpeechSynthesis API (no server
+  // roundtrip, no API key, free, instant, works offline). Click again while
+  // speaking to stop.
+  function handleListen() {
     if (!email) return;
-    if (listening && audioRef.current) {
-      audioRef.current.pause();
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      toast({ title: "Voice readback not supported", description: "Your browser doesn't support speech synthesis.", variant: "destructive" });
+      return;
+    }
+    // If already speaking, stop
+    if (listening) {
+      window.speechSynthesis.cancel();
       setListening(false);
       return;
     }
     try {
       setListening(true);
-      // Strip HTML tags from the body for TTS (first 1000 chars)
+      // Strip HTML tags from the body for TTS
       const text = email.body
         .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
         .replace(/\s+/g, " ")
         .trim()
-        .slice(0, 1000);
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: "tongtong", speed: 1.0 }),
-      });
-      if (!res.ok) throw new Error("TTS failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      if (audioRef.current) {
-        audioRef.current.src = url;
-        await audioRef.current.play().catch(() => {});
-      }
+        .slice(0, 3000);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.onend = () => setListening(false);
+      utterance.onerror = () => setListening(false);
+      window.speechSynthesis.speak(utterance);
     } catch {
       toast({ title: "Voice readback failed", variant: "destructive" });
       setListening(false);
@@ -586,8 +586,6 @@ export function EmailDetail({
           </Button>
         </div>
       )}
-      {/* Hidden audio element for TTS voice readback (powered by /api/tts) */}
-      <audio ref={audioRef} onEnded={() => setListening(false)} />
     </div>
   );
 }

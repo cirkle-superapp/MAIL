@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 // POST /api/ai/priority — score an email 0-100.
 // Body: { id: string } — fetches the email, scores it via the 5-model
-// generation consensus (z-ai SDK fallback), and returns the score.
+// generation consensus (with sequential failover), and returns the score.
 // If all AI models are unavailable (e.g. from Vercel's serverless IPs),
 // falls back to a deterministic score based on the email's intent + flags.
 export async function POST(request: NextRequest) {
