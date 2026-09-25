@@ -2,12 +2,11 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -48,13 +47,13 @@ model Commitment {
   id           String   @id @default(cuid())
   emailId      String
   threadId     String
-  owner        String   @default("") // who promised ("you" = the user, or a name/email)
+  owner        String   @default("")
   action       String
   dueDate      DateTime?
-  status      String   @default("OPEN") // PROPOSED|OPEN|DUE_SOON|OVERDUE|COMPLETED|CANCELLED
+  status      String   @default("OPEN")
   confidence   Float    @default(0.5)
-  evidence     String   @default("") // the matched sentence
-  direction    String   @default("outgoing") // outgoing (user promised) | incoming (someone promised the user)
+  evidence     String   @default("")
+  direction    String   @default("outgoing")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
