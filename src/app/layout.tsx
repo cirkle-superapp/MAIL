@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -30,12 +30,17 @@ export const metadata: Metadata = {
   icons: {
     icon: [{ url: "/favicon.ico", sizes: "256x256" }, { url: "/logo.svg" }],
   },
-  themeColor: "#1A4A5A",
   openGraph: {
     title: "Cirkle — دواير",
     description: "The next-generation social operating system.",
     type: "website",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1A4A5A",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
