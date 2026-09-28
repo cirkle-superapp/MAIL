@@ -81,9 +81,16 @@ export function HandleEmailPanel({ emailId, onUseReply }: HandlePanelProps) {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Analyzing email…
+        <div className="space-y-3 py-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-primary">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            AI is analyzing this email…
+          </div>
+          <div className="skeleton-shimmer h-4 w-3/4 rounded" />
+          <div className="skeleton-shimmer h-3 w-full rounded" />
+          <div className="skeleton-shimmer h-3 w-5/6 rounded" />
+          <div className="skeleton-shimmer h-16 w-full rounded-lg" />
+          <div className="skeleton-shimmer h-8 w-32 rounded-full" />
         </div>
       ) : result ? (
         <HandleResultView result={result} onUseReply={onUseReply} />
