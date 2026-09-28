@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Printer,
   Sparkles,
+  XCircle,
   Pencil,
   Zap,
   Maximize2,
@@ -292,6 +293,31 @@ export function EmailDetail({
       toast({ title: "Could not draft follow-up", variant: "destructive" });
     }
   }
+
+  // One-Click Decline — AI generates a polite, professional decline response.
+  // One-of-a-kind: no competitor offers a dedicated "decline" button.
+  async function handleDecline() {
+    if (!email) return;
+    toast({ title: "Drafting polite decline…", duration: 1500 });
+    try {
+      const res = await fetch("/api/ai/decline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: email.id }),
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      navigator.clipboard?.writeText(data.draft).catch(() => {});
+      openCompose();
+      toast({
+        title: "Decline drafted",
+        description: "Copied — paste into your reply.",
+        duration: 3000,
+      });
+    } catch {
+      toast({ title: "Could not draft decline", variant: "destructive" });
+    }
+  }
   function applyLabel(label: string) {
     if (!email) return;
     const current = splitLabels(email.labels);
@@ -427,6 +453,11 @@ export function EmailDetail({
           {email.folder === "SENT" && (
             <ActionBtn label="Smart follow-up" onClick={handleFollowUp} premium>
               <Sparkles className="h-[1.05rem] w-[1.05rem]" />
+            </ActionBtn>
+          )}
+          {email.folder !== "SENT" && (
+            <ActionBtn label="Decline (AI)" onClick={handleDecline} premium>
+              <XCircle className="h-[1.05rem] w-[1.05rem]" />
             </ActionBtn>
           )}
           <div className="mx-1 h-5 w-px bg-border/40" />

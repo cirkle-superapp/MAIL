@@ -17,6 +17,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -154,6 +156,20 @@ export function CommandCenterView() {
           ) : (
             <BriefingCard briefing={briefing} onFirstAction={() => setFolder("REPLY")} />
           )}
+        </div>
+
+        {/* ═══ Email Thermometer + Debt Tracker — one-of-a-kind wellness metrics ═══ */}
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <EmailThermometer
+            unread={counts.INBOX ?? 0}
+            needsReply={counts.REPLY ?? 0}
+            onClick={() => setFolder("INBOX")}
+          />
+          <EmailDebtTracker
+            youOwe={counts.REPLY ?? 0}
+            owedToYou={counts.WAITING ?? 0}
+            onClick={() => setFolder("WAITING")}
+          />
         </div>
 
         {/* ═══ Summary cards grid — premium cards with hover glow ═══ */}
@@ -310,6 +326,108 @@ function QuickLink({
     >
       <Icon className="h-3 w-3" />
       {label}
+    </button>
+  );
+}
+
+/**
+ * EMAIL THERMOMETER — one-of-a-kind inbox wellness gauge.
+ * Shows the inbox "temperature": cold (caught up) → hot (overwhelmed).
+ * No competitor offers this emotional/wellness metric.
+ */
+function EmailThermometer({
+  unread,
+  needsReply,
+  onClick,
+}: {
+  unread: number;
+  needsReply: number;
+  onClick: () => void;
+}) {
+  const temp = unread === 0 ? "cold" : unread <= 5 ? "cool" : unread <= 15 ? "warm" : "hot";
+  const config = {
+    cold: { label: "All caught up", desc: "Enjoy your day", color: "from-sky-400/20 to-sky-500/5 border-sky-400/25", bar: "bg-sky-400", text: "text-sky-500", icon: "\u2744\uFE0F", pct: 10 },
+    cool: { label: "A few items", desc: "Quick scan", color: "from-teal-400/20 to-teal-500/5 border-teal-400/25", bar: "bg-teal-400", text: "text-teal-500", icon: "\uD83C\uDF43", pct: 35 },
+    warm: { label: "Building up", desc: "Batch process", color: "from-amber-400/20 to-amber-500/5 border-amber-400/25", bar: "bg-amber-400", text: "text-amber-500", icon: "\uD83D\uDD25", pct: 65 },
+    hot: { label: "Overwhelmed", desc: "Triage now", color: "from-rose-400/20 to-rose-500/5 border-rose-400/25", bar: "bg-rose-400", text: "text-rose-500", icon: "\uD83D\uDEA8", pct: 100 },
+  }[temp];
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "group flex flex-col gap-2 rounded-xl border bg-gradient-to-br p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:shadow-float animate-spring-in",
+        config.color
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{config.icon}</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Inbox Temp</span>
+        </div>
+        <span className={cn("font-display text-2xl font-semibold tabular-nums", config.text)}>{unread}</span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <span className={cn("font-medium", config.text)}>{config.label}</span>
+        <span className="text-muted-foreground">{config.desc}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/50">
+        <div className={cn("h-full rounded-full transition-all duration-500", config.bar)} style={{ width: `${config.pct}%` }} />
+      </div>
+      {needsReply > 0 && (
+        <div className="text-[10px] text-muted-foreground">{needsReply} need{needsReply === 1 ? "s" : ""} a reply</div>
+      )}
+    </button>
+  );
+}
+
+/**
+ * EMAIL DEBT TRACKER — one-of-a-kind reply-balance metric.
+ * Shows how many replies YOU owe vs. how many are owed TO you.
+ * No competitor tracks this as a metric.
+ */
+function EmailDebtTracker({
+  youOwe,
+  owedToYou,
+  onClick,
+}: {
+  youOwe: number;
+  owedToYou: number;
+  onClick: () => void;
+}) {
+  const balance = owedToYou - youOwe;
+  const isPositive = balance >= 0;
+  const cfg = isPositive
+    ? { label: "You're ahead", desc: `${owedToYou} ${owedToYou === 1 ? "person owes" : "people owe"} you`, color: "from-emerald-400/20 to-emerald-500/5 border-emerald-400/25", text: "text-emerald-500", icon: TrendingUp }
+    : { label: "You're behind", desc: `You owe ${youOwe} ${youOwe === 1 ? "reply" : "replies"}`, color: "from-orange-400/20 to-orange-500/5 border-orange-400/25", text: "text-orange-500", icon: TrendingDown };
+  const DebtIcon = cfg.icon;
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "group flex flex-col gap-2 rounded-xl border bg-gradient-to-br p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:shadow-float animate-spring-in stagger-2",
+        cfg.color
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <DebtIcon className={cn("h-4 w-4", cfg.text)} />
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Reply Debt</span>
+        </div>
+        <span className={cn("font-display text-2xl font-semibold tabular-nums", cfg.text)}>
+          {isPositive ? "+" : ""}{balance}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <span className={cn("font-medium", cfg.text)}>{cfg.label}</span>
+        <span className="text-muted-foreground">{cfg.desc}</span>
+      </div>
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        <span>You owe: <span className="font-semibold text-orange-500">{youOwe}</span></span>
+        <span>•</span>
+        <span>Owed to you: <span className="font-semibold text-emerald-500">{owedToYou}</span></span>
+      </div>
     </button>
   );
 }
