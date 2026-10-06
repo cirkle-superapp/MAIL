@@ -188,6 +188,27 @@ export async function fetchBriefing(): Promise<BriefingResult> {
   return res.json();
 }
 
+// Conversations — active two-way email threads
+export interface Conversation {
+  threadId: string;
+  subject: string;
+  participantName: string;
+  participantEmail: string;
+  messageCount: number;
+  lastMessageDate: string;
+  lastDirection: "incoming" | "outgoing";
+  hasUnread: boolean;
+  unreadCount: number;
+  snippet: string;
+  lastIntent: string;
+}
+
+export async function fetchConversations(): Promise<{ conversations: Conversation[]; total: number; unreadThreads: number }> {
+  const res = await fetch("/api/emails/conversations", { cache: "no-store" });
+  if (!res.ok) throw new Error("conversations failed");
+  return res.json();
+}
+
 // Smart Follow-up draft
 export async function fetchFollowUp(id: string): Promise<{ draft: string; confidence: number; sourceEmailId: string; toEmails: string; subject: string }> {
   const res = await fetch("/api/ai/followup", {

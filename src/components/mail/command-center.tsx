@@ -19,6 +19,7 @@ import {
   Clock,
   TrendingUp,
   TrendingDown,
+  MessagesSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import { useMailStore } from "@/store/mail-store";
 import { useEmailStats, useInvalidateMail } from "@/hooks/use-mail";
-import { fetchBriefing } from "@/hooks/use-mail";
+import { fetchBriefing, fetchConversations, type Conversation } from "@/hooks/use-mail";
 import type { SpecialView } from "@/store/mail-store";
 import { CirkleLogo } from "@/components/brand/cirkle-logo";
 import { format } from "date-fns";
@@ -81,6 +82,16 @@ export function CommandCenterView() {
     staleTime: 60000,
     refetchOnWindowFocus: false,
   });
+
+  // Active conversations — two-way threads (you replied → they replied back)
+  const { data: conversationsData } = useQuery({
+    queryKey: ["conversations"],
+    queryFn: fetchConversations,
+    staleTime: 10000,
+    refetchOnWindowFocus: false,
+  });
+  const conversations = conversationsData?.conversations ?? [];
+  const unreadThreads = conversationsData?.unreadThreads ?? 0;
 
   // Time-based greeting + date are computed client-side ONLY to avoid
   // hydration mismatches: the server runs in UTC, the client runs in the
@@ -171,6 +182,42 @@ export function CommandCenterView() {
             onClick={() => setFolder("WAITING")}
           />
         </div>
+
+        {/* ═══ Active Conversations — two-way threads (you replied → they replied) ═══ */}
+        {conversations.length > 0 && (
+          <div className="mb-6 animate-fade-up stagger-2">
+            <div className="mb-2 flex items-center gap-2">
+              <MessagesSquare className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+                Active Conversations
+              </span>
+              {unreadThreads > 0 && (
+                <span className="animate-bounce-subtle rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-500">
+                  {unreadThreads} new {unreadThreads === 1 ? "reply" : "replies"}
+                </span>
+              )}
+              <span className="ml-auto text-[10px] text-muted-foreground">
+                {conversations.length} active {conversations.length === 1 ? "thread" : "threads"}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {conversations.slice(0, 4).map((c, i) => (
+                <ConversationCard key={c.threadId} conversation={c} index={i} onOpen={() => {
+                  // Find the first email in this thread and open it
+                  fetch(`/api/emails?folder=INBOX&q=${encodeURIComponent(c.subject.split(" ").slice(0, 3).join(" "))}`)
+                    .then(r => r.json())
+                    .then(d => {
+                      const match = d.emails?.find((e: { threadId: string }) => e.threadId === c.threadId);
+                      if (match) {
+                        useMailStore.getState().setSelectedEmailId(match.id);
+                      }
+                    })
+                    .catch(() => {});
+                }} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ═══ Summary cards grid — premium cards with hover glow ═══ */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -427,6 +474,89 @@ function EmailDebtTracker({
         <span>You owe: <span className="font-semibold text-orange-500">{youOwe}</span></span>
         <span>•</span>
         <span>Owed to you: <span className="font-semibold text-emerald-500">{owedToYou}</span></span>
+      </div>
+    </button>
+  );
+}
+
+/**
+ * CONVERSATION CARD — shows an active two-way email thread.
+ * - Highlights unread incoming replies (rose badge + pulse)
+ * - Shows participant name, subject, message count, last activity
+ * - Snippet of the latest message
+ * - Click to open the thread
+ */
+function ConversationCard({
+  conversation,
+  index,
+  onOpen,
+}: {
+  conversation: Conversation;
+  index: number;
+  onOpen: () => void;
+}) {
+  const isIncoming = conversation.lastDirection === "incoming";
+  const initials = conversation.participantName
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const timeAgo = (() => {
+    const diff = Date.now() - new Date(conversation.lastMessageDate).getTime();
+    const hours = diff / (1000 * 60 * 60);
+    if (hours < 1) return "just now";
+    if (hours < 24) return `${Math.floor(hours)}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  })();
+
+  return (
+    <button
+      onClick={onOpen}
+      className={cn(
+        "group flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-soft animate-spring-in",
+        conversation.hasUnread
+          ? "border-rose-400/30 bg-rose-500/5"
+          : "border-border/50 bg-card/50 hover:border-border",
+        `stagger-${(index % 6) + 1}`
+      )}
+    >
+      {/* Avatar with unread indicator */}
+      <div className="relative flex-shrink-0">
+        <Avatar className="h-9 w-9 ring-1 ring-border/40">
+          <AvatarFallback className="bg-gradient-to-br from-primary/20 to-accent/20 text-[11px] font-semibold text-primary">
+            {initials || "?"}
+          </AvatarFallback>
+        </Avatar>
+        {conversation.hasUnread && (
+          <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-rose-500 ring-2 ring-background animate-bounce-subtle" />
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className={cn("truncate text-xs font-medium", conversation.hasUnread ? "text-foreground" : "text-foreground/80")}>
+            {conversation.participantName}
+          </span>
+          <span className="flex-shrink-0 text-[10px] text-muted-foreground tabular-nums">{timeAgo}</span>
+        </div>
+        <div className={cn("truncate text-[11px]", conversation.hasUnread ? "font-medium text-foreground/90" : "text-muted-foreground")}>
+          {conversation.subject}
+        </div>
+        <div className="mt-0.5 truncate text-[10px] text-muted-foreground/70">
+          {isIncoming ? "↳ " : "→ "}{conversation.snippet}
+        </div>
+      </div>
+
+      {/* Message count + direction */}
+      <div className="flex flex-col items-end gap-0.5">
+        <span className="flex items-center gap-0.5 rounded-full bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground tabular-nums">
+          {conversation.messageCount} {conversation.messageCount === 1 ? "msg" : "msgs"}
+        </span>
+        <span className={cn("text-[9px]", isIncoming ? "text-rose-500" : "text-emerald-500")}>
+          {isIncoming ? "↘ replied" : "↗ you sent"}
+        </span>
       </div>
     </button>
   );
