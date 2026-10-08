@@ -259,6 +259,14 @@ export async function POST(request: NextRequest) {
     ? "SCHEDULED"
     : "SENT";
 
+  // Classify the intent of the sent email (used for the WAITING view —
+  // emails with questions/commitments that you're waiting on a reply for)
+  const intentResult = classifyIntent({
+    fromEmail: me,
+    subject,
+    body: htmlBody,
+  });
+
   const created = await db.email.create({
     data: {
       threadId,
@@ -279,8 +287,36 @@ export async function POST(request: NextRequest) {
       hasAttachment: !!attachmentName,
       attachmentName,
       scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
+      intent: intentResult.intent,
     },
   });
+
+  // If a webhook URL is configured, POST the email to it (for integration
+  // with a real email sending service like Postmark, SendGrid, Mailgun).
+  // This ensures emails "sent" via the compose dialog are actually delivered
+  // to the recipient's inbox — not just stored in the DB.
+  const webhookUrl = process.env.EMAIL_WEBHOOK_URL;
+  if (webhookUrl && !isDraft && !scheduledFor) {
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: created.id,
+          from: `You <${me}>`,
+          to,
+          cc,
+          bcc,
+          subject: subject || "(no subject)",
+          html: htmlBody,
+          attachment: attachmentName || null,
+        }),
+      });
+    } catch (webhookErr) {
+      console.error("[api/emails] webhook failed:", webhookErr);
+      // Don't fail the request — the email is already saved in the DB
+    }
+  }
 
   return NextResponse.json({ email: created });
 }
