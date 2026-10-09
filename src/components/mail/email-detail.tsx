@@ -755,7 +755,13 @@ function MessageView({
           "card-premium m-4 mt-2 mx-auto rounded-2xl p-5 text-sm leading-relaxed text-foreground/90 animate-fade-up stagger-2 prose prose-sm dark:prose-invert [&_*]:text-foreground/90 sm:m-6 sm:p-6 [&_a]:text-accent [&_a:hover]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_table]:border-collapse [&_td]:border [&_td]:border-border/50 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border/50 [&_th]:px-2 [&_th]:py-1",
           focusMode ? "max-w-3xl" : "max-w-2xl"
         )}
-        dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.body) }}
+        dangerouslySetInnerHTML={{
+          __html: sanitizeEmailHtml(
+            email.body && email.body !== "null" && email.body.trim()
+              ? email.body
+              : "<p style='color: hsl(var(--muted-foreground)); font-style: italic;'>This email has no content.</p>"
+          )
+        }}
       />
 
       {email.hasAttachment && email.attachmentName && (
