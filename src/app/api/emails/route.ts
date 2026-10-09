@@ -291,26 +291,24 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Deliver via Cirkle's OWN SMTP service (built from scratch, no external
-  // services). The email-service mini-service looks up the recipient's MX
-  // records and delivers directly to their mail server. If the service isn't
-  // running, the email is still saved in the SENT folder (graceful fallback).
-  const smtpServiceUrl = process.env.SMTP_SERVICE_URL;
-  if (smtpServiceUrl && !isDraft && !scheduledFor) {
+  // TRIGGER INNGEST — the serverless event-driven email pipeline.
+  // Vercel intercepts → Inngest orchestrates:
+  //   Step 1: Read email from Neon
+  //   Step 2: Fetch SMTP config from Turso (edge)
+  //   Step 3: Execute SMTP send (retries, rate-limiting, concurrency)
+  //   Step 4: Update delivery status
+  // Inngest handles the queue — 10,000 emails → no crash, horizontal scaling.
+  if (!isDraft && !scheduledFor) {
     try {
-      await fetch(`${smtpServiceUrl}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to,
-          from: me,
-          subject: subject || "(no subject)",
-          html: htmlBody,
-        }),
+      const { inngest } = await import("@/lib/inngest");
+      await inngest.send({
+        name: "email/send.requested",
+        data: { emailId: created.id },
       });
-    } catch (smtpErr) {
-      console.error("[api/emails] SMTP delivery failed:", smtpErr);
-      // Don't fail the request — the email is already saved in the DB
+      console.log(`[api/emails] Inngest event triggered for ${created.id}`);
+    } catch (inngestErr) {
+      console.error("[api/emails] Inngest trigger failed:", inngestErr);
+      // Graceful fallback — email is already saved in SENT
     }
   }
 
