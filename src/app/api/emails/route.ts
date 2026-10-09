@@ -291,29 +291,25 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // If a webhook URL is configured, POST the email to it (for integration
-  // with a real email sending service like Postmark, SendGrid, Mailgun).
-  // This ensures emails "sent" via the compose dialog are actually delivered
-  // to the recipient's inbox — not just stored in the DB.
-  const webhookUrl = process.env.EMAIL_WEBHOOK_URL;
-  if (webhookUrl && !isDraft && !scheduledFor) {
+  // Deliver via Cirkle's OWN SMTP service (built from scratch, no external
+  // services). The email-service mini-service looks up the recipient's MX
+  // records and delivers directly to their mail server. If the service isn't
+  // running, the email is still saved in the SENT folder (graceful fallback).
+  const smtpServiceUrl = process.env.SMTP_SERVICE_URL;
+  if (smtpServiceUrl && !isDraft && !scheduledFor) {
     try {
-      await fetch(webhookUrl, {
+      await fetch(`${smtpServiceUrl}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: created.id,
-          from: `You <${me}>`,
           to,
-          cc,
-          bcc,
+          from: me,
           subject: subject || "(no subject)",
           html: htmlBody,
-          attachment: attachmentName || null,
         }),
       });
-    } catch (webhookErr) {
-      console.error("[api/emails] webhook failed:", webhookErr);
+    } catch (smtpErr) {
+      console.error("[api/emails] SMTP delivery failed:", smtpErr);
       // Don't fail the request — the email is already saved in the DB
     }
   }

@@ -99,27 +99,23 @@ export async function POST(request: NextRequest) {
 
     const email = await db.email.create({ data: emailData });
 
-    // If a webhook URL is configured, POST the email to it (for integration
-    // with a real email sending service like Postmark, SendGrid, Mailgun).
-    const webhookUrl = process.env.EMAIL_WEBHOOK_URL;
-    if (webhookUrl && !isScheduled) {
+    // Deliver via Cirkle's OWN SMTP service (built from scratch — direct MX
+    // delivery, no external services like Postmark/SendGrid/Mailgun).
+    const smtpServiceUrl = process.env.SMTP_SERVICE_URL;
+    if (smtpServiceUrl && !isScheduled) {
       try {
-        await fetch(webhookUrl, {
+        await fetch(`${smtpServiceUrl}/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id: email.id,
-            from: `${emailData.fromName} <${emailData.fromEmail}>`,
             to: emailData.toEmails,
-            cc: emailData.ccEmails,
-            bcc: emailData.bccEmails,
+            from: emailData.fromEmail,
             subject: emailData.subject,
             html: emailData.body,
-            attachment: emailData.hasAttachment ? emailData.attachmentName : null,
           }),
         });
-      } catch (webhookErr) {
-        console.error("[api/emails/send] webhook failed:", webhookErr);
+      } catch (smtpErr) {
+        console.error("[api/emails/send] SMTP delivery failed:", smtpErr);
         // Don't fail the request — the email is already saved in the DB
       }
     }

@@ -24,7 +24,7 @@ export async function GET() {
       },
       cron: process.env.CRON_SECRET ? "configured" : "not-configured",
       emailApi: process.env.CIRKLE_API_KEY ? "configured" : "open (no auth)",
-      emailWebhook: process.env.EMAIL_WEBHOOK_URL ? "configured" : "not-configured",
+      smtpService: process.env.SMTP_SERVICE_URL ? "configured" : "not-configured",
     },
     version: "1.0.0",
   };
