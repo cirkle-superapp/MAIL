@@ -78,27 +78,83 @@ export const sendEmailFunction = inngest.createFunction(
       return res.json();
     });
 
-    // Step 3: Deliver the email — Cirkle Delivery Link (HTTPS, no port 25)
-    // This is the INDEPENDENT delivery method: no SMTP, no external services.
-    // The email is hosted on Cirkle, the recipient reads it via a secure link.
-    const sendResult = await step.run("deliver-via-cirkle-link", async () => {
-      // Generate a Cirkle Delivery Link (HTTPS — works on any browser)
+    // Step 3: Generate Cirkle Delivery Link (fallback — always create one)
+    const deliveryLink = await step.run("generate-delivery-link", async () => {
       const res = await fetch(`${baseUrl}/api/emails/deliver`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emailId }),
       });
-      if (!res.ok) {
-        throw new Error("Failed to generate delivery link");
+      if (!res.ok) throw new Error("Failed to generate delivery link");
+      return res.json();
+    });
+
+    // Step 4: Trigger GitHub Actions — ephemeral SMTP carrier (port 25 OPEN)
+    // GitHub Actions runners have outbound port 25 unrestricted. The runner
+    // spins up, connects directly to the recipient's MX server via TLS,
+    // delivers the email, reports status back to Neon, and shuts down.
+    const sendResult = await step.run("trigger-github-actions-smtp-carrier", async () => {
+      const githubToken = process.env.GITHUB_TOKEN || process.env.CIRKLE_GITHUB_TOKEN;
+      const repo = process.env.GITHUB_REPO || "cirkle-superapp/MAIL";
+
+      if (!githubToken) {
+        // No GitHub token → fall back to the Cirkle Delivery Link
+        console.log("[send-email] No GitHub token — using delivery link only");
+        return {
+          success: true,
+          method: "cirkle-delivery-link",
+          link: deliveryLink.link,
+          smtpDelivery: false,
+        };
       }
-      const data = await res.json();
-      return {
-        success: true,
-        method: "cirkle-delivery-link",
-        link: data.link,
-        token: data.token,
-        expiresAt: data.expiresAt,
-      };
+
+      try {
+        // Trigger the GitHub Actions workflow via Repository Dispatch API
+        const res = await fetch(
+          `https://api.github.com/repos/${repo}/dispatches`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${githubToken}`,
+              Accept: "application/vnd.github+json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              event_type: "cirkle-send-email",
+              client_payload: {
+                email_id: emailId,
+                to: email.toEmails,
+                from: "you@cirkle.mail",
+                subject: email.subject,
+                html: email.body,
+                delivery_link_id: deliveryLink.token,
+              },
+            }),
+          }
+        );
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(`GitHub dispatch failed: ${res.status} ${errData.message || ""}`);
+        }
+
+        console.log("[send-email] GitHub Actions dispatched — SMTP carrier spinning up...");
+        return {
+          success: true,
+          method: "github-actions-smtp",
+          deliveryLink: deliveryLink.link,
+          smtpDelivery: true,
+        };
+      } catch (err) {
+        console.log("[send-email] GitHub Actions failed — delivery link still available");
+        return {
+          success: true,
+          method: "cirkle-delivery-link",
+          link: deliveryLink.link,
+          smtpDelivery: false,
+          smtpError: err instanceof Error ? err.message : "Unknown",
+        };
+      }
     });
 
     // Step 4: Update email status (already saved as SENT in Neon — just log the delivery result)

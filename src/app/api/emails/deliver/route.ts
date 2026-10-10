@@ -132,3 +132,57 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/**
+ * PATCH /api/emails/deliver — update delivery status (called by GitHub Actions)
+ *
+ * Body: { deliveryLinkId, status, mxServer, error }
+ * The GitHub Actions runner calls this after attempting SMTP delivery.
+ * Updates the DeliveryLink record in Neon with the result.
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const deliveryLinkId = body?.deliveryLinkId as string | undefined;
+    const status = body?.status as string | undefined;
+
+    if (!deliveryLinkId) {
+      return NextResponse.json({ error: "deliveryLinkId is required" }, { status: 400 });
+    }
+
+    const link = await db.deliveryLink.findUnique({
+      where: { id: deliveryLinkId },
+    });
+
+    if (!link) {
+      return NextResponse.json({ error: "delivery link not found" }, { status: 404 });
+    }
+
+    await db.deliveryLink.update({
+      where: { id: deliveryLinkId },
+      data: {
+        viewed: status === "delivered" ? true : link.viewed,
+        viewedAt: status === "delivered" ? new Date() : link.viewedAt,
+      },
+    });
+
+    console.log(`[deliver PATCH] Email ${link.emailId} delivery: ${status}`, {
+      mxServer: body?.mxServer,
+      error: body?.error,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      deliveryLinkId,
+      status,
+      mxServer: body?.mxServer,
+      error: body?.error,
+    });
+  } catch (err) {
+    console.error("[deliver PATCH] error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}

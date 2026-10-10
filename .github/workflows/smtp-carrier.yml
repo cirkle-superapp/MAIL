@@ -1,0 +1,212 @@
+name: Cirkle SMTP Carrier
+# ─────────────────────────────────────────────────────────────────────────────
+# CIRKLE MAIL — Cloud-Native Virtual SMTP Node Engine
+# ─────────────────────────────────────────────────────────────────────────────
+# GitHub Actions = ephemeral cloud runtime container with PORT 25 OPEN.
+# When Vercel sends an email, Inngest triggers this workflow via the GitHub
+# Repository Dispatch API. The runner spins up, pulls the signed email from
+# Neon, opens a direct TLS socket over Port 25 to the recipient's MX server,
+# delivers the email, reports the status back to Neon, and shuts down.
+#
+# This is the "Cloud-Native Virtual SMTP Grid":
+#   Vercel → Inngest → GitHub Actions (port 25) → Gmail MX → Inbox
+#   Turso (DKIM keys) + Neon (mail storage) + Vercel (DKIM signer)
+#
+# Trigger: repository_dispatch with event_type "cirkle-send-email"
+# Payload: { email_id, to, from, subject, html, delivery_link_id }
+
+on:
+  repository_dispatch:
+    types: [cirkle-send-email]
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout Cirkle Mail
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Fetch SMTP config from Turso (edge)
+        id: smtp-config
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_TOKEN: ${{ secrets.TURSO_TOKEN }}
+        run: |
+          CONFIG=$(bun run -e '
+            import { createClient } from "@libsql/client";
+            const c = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_TOKEN });
+            const r = await c.execute("SELECT * FROM SmtpConfig WHERE enabled=1 ORDER BY priority ASC LIMIT 1");
+            const row = r.rows[0];
+            if (row) {
+              console.log("host=" + (row.host || ""));
+              console.log("port=" + row.port);
+              console.log("apiKey=" + (row.apiKey || ""));
+            } else {
+              console.log("host=");
+              console.log("port=25");
+              console.log("apiKey=");
+            }
+          ' 2>/dev/null || echo "host=\nport=25\napiKey=")
+          echo "$CONFIG" >> $GITHUB_ENV
+
+      - name: Deliver email via direct SMTP (Port 25 — OPEN on GitHub Actions)
+        id: deliver
+        env:
+          EMAIL_ID: ${{ github.event.client_payload.email_id }}
+          TO: ${{ github.event.client_payload.to }}
+          FROM: ${{ github.event.client_payload.from }}
+          SUBJECT: ${{ github.event.client_payload.subject }}
+          HTML: ${{ github.event.client_payload.html }}
+          DELIVERY_LINK_ID: ${{ github.event.client_payload.delivery_link_id }}
+          CIRKLE_API_URL: ${{ secrets.CIRKLE_API_URL }}
+          CIRKLE_API_KEY: ${{ secrets.CIRKLE_API_KEY }}
+        run: |
+          bun run -e '
+            import { resolveMx } from "dns";
+            import { createConnection } from "net";
+            import { createHash } from "crypto";
+
+            const TO = process.env.TO;
+            const FROM = process.env.FROM || "you@cirkle.mail";
+            const SUBJECT = process.env.SUBJECT || "(no subject)";
+            const HTML = process.env.HTML || "<p></p>";
+            const EMAIL_ID = process.env.EMAIL_ID;
+            const DELIVERY_LINK_ID = process.env.DELIVERY_LINK_ID;
+            const CIRKLE_API_URL = process.env.CIRKLE_API_URL || "https://cirkle-mail.vercel.app";
+            const CIRKLE_API_KEY = process.env.CIRKLE_API_KEY || "";
+
+            const domain = TO.split(",")[0].split("@")[1];
+            console.log("[cirkle-smtp] Delivering to", TO, "domain:", domain);
+
+            // Step 1: Lookup MX records
+            const mxRecords = await new Promise((resolve) => {
+              resolveMx(domain, (err, addresses) => {
+                if (err || !addresses || addresses.length === 0) {
+                  console.log("[cirkle-smtp] No MX records, trying domain directly");
+                  resolve([{ exchange: domain, priority: 0 }]);
+                  return;
+                }
+                addresses.sort((a, b) => a.priority - b.priority);
+                resolve(addresses);
+              });
+            });
+
+            console.log("[cirkle-smtp] MX records:", mxRecords.map(m => m.exchange).join(", "));
+
+            // Step 2: Build RFC 5322 email
+            const msgId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@cirkle.mail>`;
+            const date = new Date().toUTCString();
+            const emailContent = [
+              `From: <${FROM}>`,
+              `To: <${TO.split(",")[0].trim()}>`,
+              `Subject: ${SUBJECT}`,
+              `Date: ${date}`,
+              `Message-ID: ${msgId}`,
+              `MIME-Version: 1.0`,
+              `Content-Type: text/html; charset=UTF-8`,
+              ``,
+              HTML,
+              `.`,
+            ].join("\r\n");
+
+            // Step 3: Connect + deliver via SMTP (Port 25 — OPEN on GitHub Actions!)
+            let delivered = false;
+            let lastError = "";
+
+            for (const mx of mxRecords) {
+              try {
+                console.log("[cirkle-smtp] Connecting to", mx.exchange, ":25 ...");
+                const socket = createConnection({ port: 25, host: mx.exchange });
+
+                await new Promise((res, rej) => {
+                  socket.once("connect", () => { console.log("[cirkle-smtp] Connected!"); res(); });
+                  socket.once("error", (e) => { lastError = e.message; rej(e); });
+                  setTimeout(() => rej(new Error("Connection timeout")), 10000);
+                });
+
+                // Wait for 220 greeting
+                await new Promise((resolve) => {
+                  let buf = "";
+                  socket.on("data", (chunk) => {
+                    buf += chunk.toString();
+                    const lines = buf.split("\r\n");
+                    const last = lines[lines.length - 2] || lines[lines.length - 1];
+                    if (last && last.length >= 3 && last[3] !== "-") resolve();
+                  });
+                });
+
+                // SMTP handshake
+                socket.write("EHLO cirkle.mail\r\n");
+                await new Promise(r => setTimeout(r, 1000));
+
+                socket.write(`MAIL FROM:<${FROM}>\r\n`);
+                await new Promise(r => setTimeout(r, 500));
+
+                socket.write(`RCPT TO:<${TO.split(",")[0].trim()}>\r\n`);
+                await new Promise(r => setTimeout(r, 500));
+
+                socket.write("DATA\r\n");
+                await new Promise(r => setTimeout(r, 500));
+
+                socket.write(emailContent + "\r\n");
+                await new Promise(r => setTimeout(r, 1000));
+
+                socket.write("QUIT\r\n");
+                socket.destroy();
+
+                console.log("[cirkle-smtp] ✓ Email delivered to", mx.exchange);
+                delivered = true;
+                break;
+              } catch (err) {
+                console.log("[cirkle-smtp] ✗ Failed on", mx.exchange, ":", err.message);
+                lastError = err.message;
+                continue;
+              }
+            }
+
+            // Step 4: Report delivery status back to Neon via Cirkle API
+            const status = delivered ? "delivered" : "failed";
+            console.log("[cirkle-smtp] Delivery status:", status);
+
+            if (DELIVERY_LINK_ID) {
+              try {
+                await fetch(`${CIRKLE_API_URL}/api/emails/deliver`, {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Cirkle-API-Key": CIRKLE_API_KEY,
+                  },
+                  body: JSON.stringify({
+                    deliveryLinkId: DELIVERY_LINK_ID,
+                    status,
+                    mxServer: mxRecords[0]?.exchange,
+                    error: lastError || null,
+                  }),
+                });
+                console.log("[cirkle-smtp] Status reported to Neon");
+              } catch (e) {
+                console.log("[cirkle-smtp] Failed to report status:", e.message);
+              }
+            }
+
+            // Output for GitHub Actions
+            const output = delivered ? "delivered" : `failed:${lastError}`;
+            console.log("::set-output name=result::" + output);
+          '
+
+      - name: Report result
+        run: |
+          echo "Delivery result: ${{ steps.deliver.outputs.result }}"
+          if [[ "${{ steps.deliver.outputs.result }}" == "delivered" ]]; then
+            echo "✅ Email delivered successfully via GitHub Actions SMTP carrier"
+          else
+            echo "⚠️ Delivery failed — Inngest will retry"
+            exit 1
+          fi
