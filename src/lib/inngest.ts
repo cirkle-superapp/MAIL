@@ -78,113 +78,27 @@ export const sendEmailFunction = inngest.createFunction(
       return res.json();
     });
 
-    // Step 3: Execute the SMTP send
-    const sendResult = await step.run("execute-smtp-send", async () => {
-      const { toEmails, subject, body } = email;
-      const { host, port, apiKey } = smtpConfig;
-
-      // If a host is configured → call the SMTP service (the custom mini-service)
-      if (host) {
-        try {
-          const res = await fetch(`http://${host}:${port}/send`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(apiKey ? { "X-Cirkle-API-Key": apiKey } : {}),
-            },
-            body: JSON.stringify({
-              to: toEmails,
-              from: "you@cirkle.mail",
-              subject,
-              html: body,
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            return { success: true, method: "smtp-service", mxServer: data.mxServer };
-          }
-          throw new Error(`SMTP service returned ${res.status}`);
-        } catch (err) {
-          // Fall through to direct MX delivery
-          console.log("[send-email] SMTP service failed, trying direct MX:", err);
-        }
-      }
-
-      // Direct MX delivery (from scratch — DNS resolveMx + net connect + SMTP protocol)
-      // This runs inside the Inngest function. On platforms that allow port 25,
-      // it delivers directly to the recipient's mail server. On Vercel (port 25
-      // blocked), it fails gracefully — the email is already saved in SENT.
-      const domain = toEmails.split(",")[0].split("@")[1];
-      if (!domain) throw new Error("Invalid recipient");
-
-      const dns = await import("dns");
-      const net = await import("net");
-
-      const mxRecords = await new Promise<{ exchange: string; priority: number }[]>((resolve) => {
-        dns.resolveMx(domain, (err, addresses) => {
-          resolve(err || !addresses ? [] : addresses.sort((a, b) => a.priority - b.priority));
-        });
+    // Step 3: Deliver the email — Cirkle Delivery Link (HTTPS, no port 25)
+    // This is the INDEPENDENT delivery method: no SMTP, no external services.
+    // The email is hosted on Cirkle, the recipient reads it via a secure link.
+    const sendResult = await step.run("deliver-via-cirkle-link", async () => {
+      // Generate a Cirkle Delivery Link (HTTPS — works on any browser)
+      const res = await fetch(`${baseUrl}/api/emails/deliver`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailId }),
       });
-
-      if (mxRecords.length === 0) {
-        throw new Error(`No MX records for ${domain}`);
+      if (!res.ok) {
+        throw new Error("Failed to generate delivery link");
       }
-
-      for (const mx of mxRecords) {
-        try {
-          const socket = net.createConnection({ port: 25, host: mx.exchange });
-          await new Promise<void>((res, rej) => {
-            socket.once("connect", res);
-            socket.once("error", rej);
-            setTimeout(() => rej(new Error("Connection timeout")), 5000);
-          });
-
-          // SMTP handshake
-          await new Promise<string>((resolve) => {
-            let buf = "";
-            socket.on("data", (chunk: Buffer) => {
-              buf += chunk.toString();
-              const lines = buf.split("\r\n");
-              const last = lines[lines.length - 2] || lines[lines.length - 1];
-              if (last && last.length >= 3 && last[3] !== "-") resolve(buf.trim());
-            });
-          });
-
-          socket.write("EHLO cirkle.mail\r\n");
-          await new Promise((r) => setTimeout(r, 500));
-          socket.write(`MAIL FROM:<you@cirkle.mail>\r\n`);
-          await new Promise((r) => setTimeout(r, 500));
-          socket.write(`RCPT TO:<${toEmails.split(",")[0].trim()}>\r\n`);
-          await new Promise((r) => setTimeout(r, 500));
-          socket.write("DATA\r\n");
-          await new Promise((r) => setTimeout(r, 500));
-
-          const msgId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@cirkle.mail>`;
-          const emailContent = [
-            `From: <you@cirkle.mail>`,
-            `To: <${toEmails.split(",")[0].trim()}>`,
-            `Subject: ${subject}`,
-            `Date: ${new Date().toUTCString()}`,
-            `Message-ID: ${msgId}`,
-            `MIME-Version: 1.0`,
-            `Content-Type: text/html; charset=UTF-8`,
-            ``,
-            body,
-            `.`,
-          ].join("\r\n");
-          socket.write(emailContent + "\r\n");
-          await new Promise((r) => setTimeout(r, 500));
-          socket.write("QUIT\r\n");
-          socket.destroy();
-
-          return { success: true, method: "direct-mx", mxServer: mx.exchange };
-        } catch {
-          // Try next MX server
-          continue;
-        }
-      }
-
-      return { success: false, method: "direct-mx", error: "All MX servers failed" };
+      const data = await res.json();
+      return {
+        success: true,
+        method: "cirkle-delivery-link",
+        link: data.link,
+        token: data.token,
+        expiresAt: data.expiresAt,
+      };
     });
 
     // Step 4: Update email status (already saved as SENT in Neon — just log the delivery result)

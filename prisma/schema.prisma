@@ -41,6 +41,8 @@ model Email {
   @@index([snoozedUntil])
   @@index([scheduledFor])
   @@index([intent])
+
+  deliveryLinks DeliveryLink[]
 }
 
 model Commitment {
@@ -69,4 +71,19 @@ model Label {
   color     String   @default("gray")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model DeliveryLink {
+  id           String   @id @default(cuid())
+  emailId      String
+  email        Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  recipientEmail String
+  token        String   @unique
+  viewedAt     DateTime?
+  viewed       Boolean  @default(false)
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([emailId])
+  @@index([token])
 }
